@@ -5,11 +5,8 @@ import errorLogger from "./middlewares/error/error-logger"
 import errorResponder from "./middlewares/error/error-responder"
 import notFound from "./middlewares/not-found"
 import cors from 'cors'
-import developmentGrouprouter from "./routers/developmentGroup/developmentGroup"
-import meetingRouter from "./routers/meetings"
-import reminderRouter from "./routers/reminder"
 import authRouter from "./routers/auth/auth"
-import taskRouter from "./routers/task"
+
 
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
@@ -26,11 +23,7 @@ export async function start() {
     app.use(json()) // a middleware to extract the post/put/patch data and save it to the request object in case the content type of the request is application/json
 
     // routers
-    app.use('/developmentGroup', developmentGrouprouter)
-    app.use('/meeting', meetingRouter)
-    app.use('/reminder', reminderRouter)
     app.use('/auth', authRouter)
-    app.use('/task', taskRouter)
     
 
     // special notFound middleware

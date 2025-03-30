@@ -1,4 +1,5 @@
-import { AllowNull, BelongsTo, Column, DataType, Default, ForeignKey, Model, PrimaryKey, Table, HasMany } from "sequelize-typescript";
+import { AllowNull, Column, DataType, Default, Model, PrimaryKey, Table, HasMany } from "sequelize-typescript";
+import Email from "./Email";
 
 @Table({
     underscored: true,
@@ -21,5 +22,8 @@ export default class User extends Model {
     @AllowNull(false)
     @Column(DataType.STRING)
     password: string;
+
+    @HasMany(() => Email)
+    emails: Email[];
 
 }

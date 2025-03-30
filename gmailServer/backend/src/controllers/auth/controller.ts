@@ -32,7 +32,7 @@ export async function login(req: Request<{}, {}, {username: string, password: st
 
         const user = await User.findOne({
             where: {
-                userName: username, 
+                email: username, 
                 password: hashPassword(password)
             },
         });
@@ -43,11 +43,10 @@ export async function login(req: Request<{}, {}, {username: string, password: st
         // socket.emit("user:login", {
         //     id: user.id,
         //     name: user.name,
-        //     username: user.userName,
+        //     username: user.email,
         //     time: new Date().toISOString(),
         //   });
       
-
         res.json({ 
             jwt,
             messages: `Welcome ${user.name}!` 
@@ -58,12 +57,19 @@ export async function login(req: Request<{}, {}, {username: string, password: st
 }
 
 // register
-export async function register(req: Request<{}, {}, {name: string, username: string, password: string, email: string, role: string}>, res: Response, next: NextFunction) {
+export async function register(req: Request<{}, {}, {name: string, password: string, email: string}>, res: Response, next: NextFunction) {
     try {
-        const { name, username, password, email } = req.body;
+        const { name, password, email } = req.body;
+
+        const existingUser = await User.findOne({
+            where: { email },
+        });
+
+        if (existingUser) return next(new AppError(StatusCodes.BAD_REQUEST, 'Email already in use'));
+
         const user = await User.create({
             name,
-            email: email, 
+            email, 
             password: hashPassword(password),
         });
 
@@ -89,18 +95,17 @@ export async function deleteUser(req: Request<{id: string}, {}, {}>, res: Respon
 }
 
 // update user
-export async function updateUser(req: Request<{id: string}, {}, {name: string, username: string, password: string, email: string, role: string}>, res: Response, next: NextFunction) {
+export async function updateUser(req: Request<{id: string}, {}, {name: string, password: string, email: string, role: string}>, res: Response, next: NextFunction) {
     try {
         const { id } = req.params;
-        const { name, username, password, email } = req.body;
+        const { name, email, password } = req.body;
         const user = await User.findByPk(id);
 
         if (!user) return next(new AppError(StatusCodes.NOT_FOUND, 'user not found'));
 
         user.name = name;
-        user.email = username;
-        user.password = hashPassword(password);
         user.email = email;
+        user.password = hashPassword(password);
 
         await user.save();
         res.json(user);
