@@ -1,5 +1,7 @@
-import { AllowNull, BelongsTo, Column, DataType, Default, ForeignKey, HasMany, Model, PrimaryKey, Table } from "sequelize-typescript";
-import User from "./user";
+import { AllowNull, BelongsTo, BelongsToMany, Column, DataType, Default, ForeignKey, HasMany, Model, PrimaryKey, Table } from "sequelize-typescript";
+import User from "../models/user";
+import Label from "../models/labels";
+import EmailLabel from "./emailLabel";
 
 @Table({
     underscored: true,
@@ -59,5 +61,8 @@ export default class Email extends Model {
 
     @BelongsTo(() => User)
     user: User;
+
+    @BelongsToMany(() => Label, () => EmailLabel)
+    labels: Label[];
 
 }

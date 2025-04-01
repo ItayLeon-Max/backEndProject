@@ -1,5 +1,5 @@
 import { AllowNull, Column, DataType, Default, Model, PrimaryKey, Table, HasMany } from "sequelize-typescript";
-import Email from "./Email";
+import Email from "../models/email";
 
 @Table({
     underscored: true,
