@@ -13,5 +13,4 @@ emailRouter.post("/read/:emailId", readEmailAt) // mark email as read
 emailRouter.post("/reply/:emailId", replyToEmail) // reply to email
 emailRouter.delete("/:emailId/:userId", deleteEmail) // delete email
 
-
 export default emailRouter;
