@@ -1,13 +1,15 @@
 import { Sequelize } from "sequelize-typescript";
 import config from 'config'
 import User from "../models/user";
-import Email from "../models/Email";
+import Email from "../models/email";
+import Label from "../models/labels";
+import EmailLabel from "../models/emailLabel";
 
 const logging = config.get<boolean>('sequelize.logging') ? console.log : false
 
 const sequelize = new Sequelize({
     // [ add ALL model classes you created to the array ]:
-    models: [  User, Email  ],
+    models: [  User, Email, Label, EmailLabel  ],
     dialect: 'mysql',
     ...config.get('db'),
     logging,

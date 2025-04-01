@@ -1,12 +1,19 @@
 import AppError from '../../errors/app-error';
 import { Request, Response, NextFunction } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import Email from '../../models/Email';
+import Email from '../../models/email';
 import User from '../../models/user';
 
 export async function getEmails(req: Request, res: Response, next: NextFunction) {
     try {
-        const emails = await Email.findAll();
+        const emails = await Email.findAll({
+            include: [{
+                association: 'labels',
+                attributes: ['id', 'name'],
+                through: {
+                    attributes: []
+             }}],
+        });
         res.json(emails);
     } catch (e) {
         next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
@@ -160,4 +167,5 @@ export async function getEmailThread(req: Request, res: Response, next: NextFunc
         next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
     }
 }
+
 
