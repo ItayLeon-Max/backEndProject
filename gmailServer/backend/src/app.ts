@@ -7,6 +7,8 @@ import notFound from "./middlewares/not-found"
 import cors from 'cors'
 import authRouter from "./routers/auth/auth"
 import emailRouter from "../src/routers/email/email"
+import labelRouter from "../src/routers/label/label"
+import emailLabelRouter from "../src/routers/email-label/email-labels"
 
 
 const port = config.get<string>('app.port')
@@ -26,6 +28,7 @@ export async function start() {
     // routers
     app.use('/auth', authRouter)
     app.use('/emails', emailRouter)
+    app.use('/labels', labelRouter, emailLabelRouter)
     
 
     // special notFound middleware

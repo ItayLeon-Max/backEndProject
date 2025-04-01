@@ -1,30 +1,21 @@
 import {
-    Table, Model, Column, DataType, PrimaryKey, Default, ForeignKey, BelongsTo,
-    BelongsToMany
-  } from "sequelize-typescript";
-import User from "../models/user";
-import Email from "../models/email";
-import EmailLabel from "../models/emailLabel";
-  
-  @Table({
-    underscored: true,
-  })
-  export default class Label extends Model {
-    @PrimaryKey
-    @Default(DataType.UUIDV4)
-    @Column(DataType.UUID)
-    id: string;
-  
-    @ForeignKey(() => User)
-    @Column(DataType.UUID)
-    userId: string;
-  
-    @Column(DataType.STRING)
-    name: string;
-  
-    @BelongsTo(() => User)
-    user: User;
+  Table, Model, Column, DataType, PrimaryKey, Default, BelongsToMany
+} from "sequelize-typescript";
+import Email from "./email";
+import EmailLabel from "./emailLabel";
 
-    @BelongsToMany(() => Email, () => EmailLabel)
-    emails: Email[];        
-  }
+@Table({
+  underscored: true,
+})
+export default class Label extends Model {
+  @PrimaryKey
+  @Default(DataType.UUIDV4)
+  @Column(DataType.UUID)
+  id: string;
+
+  @Column(DataType.STRING)
+  name: string;
+
+  @BelongsToMany(() => Email, () => EmailLabel)
+  emails: Email[];
+}
