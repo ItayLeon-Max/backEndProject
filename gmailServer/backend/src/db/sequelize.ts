@@ -1,7 +1,7 @@
 import { Sequelize } from "sequelize-typescript";
 import config from 'config'
 import User from "../models/user";
-import Email from "models/Email";
+import Email from "../models/Email";
 
 const logging = config.get<boolean>('sequelize.logging') ? console.log : false
 

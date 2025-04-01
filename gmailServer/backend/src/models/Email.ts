@@ -1,4 +1,4 @@
-import { AllowNull, Column, DataType, Default, ForeignKey, Model, PrimaryKey, Table } from "sequelize-typescript";
+import { AllowNull, BelongsTo, Column, DataType, Default, ForeignKey, HasMany, Model, PrimaryKey, Table } from "sequelize-typescript";
 import User from "./user";
 
 @Table({
@@ -40,4 +40,24 @@ export default class Email extends Model {
     @AllowNull(false)
     @Column(DataType.UUID)
     userId: string;
+
+    @Default(false)
+    @Column(DataType.BOOLEAN)
+    deletedBySender: boolean;
+
+    @Default(false)
+    @Column(DataType.BOOLEAN)
+    deletedByReceiver: boolean; 
+
+    @ForeignKey(() => Email)
+    @AllowNull(true)
+    @Column(DataType.UUID)
+    replyToId: string;
+
+    @BelongsTo(() => Email, { foreignKey: 'replyToId' })
+    parentEmail: Email;
+
+    @BelongsTo(() => User)
+    user: User;
+
 }

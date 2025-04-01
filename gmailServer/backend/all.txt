@@ -15,6 +15,19 @@ authRouter.put('/:id', validation(updateUserValidator) ,updateUser);
 authRouter.post('/logout/:id', logout);
 
 export default authRouter;
+# routers/email/email.ts
+import { getEmailInbox, getEmails, getEmailSent, sendEmail } from "../../controllers/email/controller";
+import { Router } from "express";
+
+
+const emailRouter = Router();
+
+emailRouter.get("/", getEmails);
+emailRouter.post("/", sendEmail);
+emailRouter.get("/inbox/:userId", getEmailInbox);
+emailRouter.get("/sent/:userId", getEmailSent);
+
+export default emailRouter;
 # app.ts
 import express, { json } from "express"
 import config from 'config'
@@ -24,6 +37,7 @@ import errorResponder from "./middlewares/error/error-responder"
 import notFound from "./middlewares/not-found"
 import cors from 'cors'
 import authRouter from "./routers/auth/auth"
+import emailRouter from "../src/routers/email/email"
 
 
 const port = config.get<string>('app.port')
@@ -42,6 +56,7 @@ export async function start() {
 
     // routers
     app.use('/auth', authRouter)
+    app.use('/emails', emailRouter)
     
 
     // special notFound middleware
@@ -136,7 +151,7 @@ export default function errorLogger(err: Error, req: Request, res: Response, nex
     next(err)
 }
 # models/Email.ts
-import { AllowNull, Column, DataType, Default, ForeignKey, Model, PrimaryKey, Table } from "sequelize-typescript";
+import { AllowNull, BelongsTo, Column, DataType, Default, ForeignKey, HasMany, Model, PrimaryKey, Table } from "sequelize-typescript";
 import User from "./user";
 
 @Table({
@@ -178,6 +193,10 @@ export default class Email extends Model {
     @AllowNull(false)
     @Column(DataType.UUID)
     userId: string;
+
+    @BelongsTo(() => User)
+    user: User;
+
 }
 # models/user.ts
 import { AllowNull, Column, DataType, Default, Model, PrimaryKey, Table, HasMany } from "sequelize-typescript";
@@ -213,7 +232,7 @@ export default class User extends Model {
 import { Sequelize } from "sequelize-typescript";
 import config from 'config'
 import User from "../models/user";
-import Email from "models/Email";
+import Email from "../models/Email";
 
 const logging = config.get<boolean>('sequelize.logging') ? console.log : false
 
@@ -400,6 +419,70 @@ export const deleteUserValidator = Joi.object({
 })
 
 
+# controllers/email/controller.ts
+import AppError from '../../errors/app-error';
+import { Request, Response, NextFunction } from 'express';
+import { StatusCodes } from 'http-status-codes';
+import Email from 'models/Email';
+
+export async function getEmails(req: Request, res: Response, next: NextFunction) {
+    try {
+        const emails = await Email.findAll();
+        res.json(emails);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+export async function sendEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { subject, body, fromEmail, toEmail } = req.body;
+
+        const email = await Email.create({
+            subject,
+            body,
+            fromEmail,
+            toEmail,
+            sentAt: new Date(),
+        });
+
+        res.json(email);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+export async function getEmailInbox(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { userId } = req.params;
+
+        const emails = await Email.findAll({
+            where: {
+                toEmail: userId,
+            },
+        });
+
+        res.json(emails);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+export async function getEmailSent(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { userId } = req.params;
+
+        const emails = await Email.findAll({
+            where: {
+                fromEmail: userId,
+            },
+        });
+
+        res.json(emails);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
 # server.ts
 import config from 'config';
 import app, { start } from './app';
