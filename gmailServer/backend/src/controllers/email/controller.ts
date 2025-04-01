@@ -22,18 +22,23 @@ export async function getEmails(req: Request, res: Response, next: NextFunction)
 
 export async function sendEmail(req: Request, res: Response, next: NextFunction) {
     try {
-        const { subject, body, fromEmail, toEmail, userId, replyToId } = req.body;
+        const { subject, body, fromEmail, toEmail, userId, replyToId, isDraft = false } = req.body;
 
-        const email = await Email.create({
+        const emailData: any = {
             subject,
             body,
             fromEmail,
             toEmail,
-            sentAt: new Date(),
             userId,
-            replyToId
-        });
-        
+            replyToId,
+            isDraft
+        };
+
+        if (!isDraft) {
+            emailData.sentAt = new Date();
+        }
+
+        const email = await Email.create(emailData);
 
         res.json(email);
     } catch (e) {
@@ -52,8 +57,14 @@ export async function getEmailInbox(req: Request, res: Response, next: NextFunct
             where: {
                 toEmail: user.email,
                 deletedByReceiver: false,
-                replyToId: null 
+                replyToId: null,
+                isDraft: false
             },
+            include: [{
+                association: 'labels',
+                attributes: ['id', 'name'],
+                through: { attributes: [] }
+            }]
         });
 
         res.json(emails);
@@ -167,5 +178,3 @@ export async function getEmailThread(req: Request, res: Response, next: NextFunc
         next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
     }
 }
-
-

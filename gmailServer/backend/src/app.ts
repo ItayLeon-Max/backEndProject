@@ -9,6 +9,7 @@ import authRouter from "./routers/auth/auth"
 import emailRouter from "../src/routers/email/email"
 import labelRouter from "../src/routers/label/label"
 import emailLabelRouter from "../src/routers/email-label/email-labels"
+import draftRouter from "../src/routers/draft/draft"
 
 
 const port = config.get<string>('app.port')
@@ -29,6 +30,7 @@ export async function start() {
     app.use('/auth', authRouter)
     app.use('/emails', emailRouter)
     app.use('/labels', labelRouter, emailLabelRouter)
+    app.use("/draft", draftRouter)
     
 
     // special notFound middleware
