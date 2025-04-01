@@ -1,0 +1,497 @@
+# routers/auth/auth.ts
+import { Router } from 'express';
+import { deleteUser, getAllUsers, login, logout, register, updateUser } from '../../controllers/auth/controller';
+import validation from '../../middlewares/validation';
+import { deleteUserValidator, loginValidator, registerValidator, updateUserValidator } from '../../controllers/auth/validator';
+
+const authRouter = Router();
+
+// auth routes
+authRouter.get('/', getAllUsers)
+authRouter.post('/login', validation(loginValidator), login);
+authRouter.post('/register', validation(registerValidator), register);
+authRouter.delete('/:id', validation(deleteUserValidator) ,deleteUser);
+authRouter.put('/:id', validation(updateUserValidator) ,updateUser);
+authRouter.post('/logout/:id', logout);
+
+export default authRouter;
+# routers/email/email.ts
+import { getEmailInbox, getEmails, getEmailSent, sendEmail } from "../../controllers/email/controller";
+import { Router } from "express";
+
+
+const emailRouter = Router();
+
+emailRouter.get("/", getEmails);
+emailRouter.post("/", sendEmail);
+emailRouter.get("/inbox/:userId", getEmailInbox);
+emailRouter.get("/sent/:userId", getEmailSent);
+
+export default emailRouter;
+# app.ts
+import express, { json } from "express"
+import config from 'config'
+import sequelize from "./db/sequelize"
+import errorLogger from "./middlewares/error/error-logger"
+import errorResponder from "./middlewares/error/error-responder"
+import notFound from "./middlewares/not-found"
+import cors from 'cors'
+import authRouter from "./routers/auth/auth"
+import emailRouter from "../src/routers/email/email"
+
+
+const port = config.get<string>('app.port')
+const name = config.get<string>('app.name')
+const force = config.get<boolean>('sequelize.sync.force')
+
+const app = express();
+
+export async function start() {
+    await sequelize.sync({ force })
+
+    // middlewares
+    app.use(cors()) // allow any client to use this server
+
+    app.use(json()) // a middleware to extract the post/put/patch data and save it to the request object in case the content type of the request is application/json
+
+    // routers
+    app.use('/auth', authRouter)
+    app.use('/emails', emailRouter)
+    
+
+    // special notFound middleware
+    app.use(notFound)
+
+    // error middleware
+    app.use(errorLogger)
+    app.use(errorResponder)
+
+    // app.listen(port, () => console.log(`${name} started on port ${port}...`))
+}
+
+export default app
+# io/io.ts
+// src/io/io.ts
+
+import { io } from "socket.io-client";
+import config from 'config';
+
+const socket = io(config.get<string>('io.url'), {
+  transports: ['websocket'],
+  reconnection: true
+});
+
+socket.on('connect', () => {
+    console.log('🟢 Connected to Socket.IO server');
+  });
+
+socket.on('disconnect', () => {
+    console.log('🔴 Disconnected from Socket.IO server');
+  });
+
+export default socket;
+# middlewares/validation.ts
+import { NextFunction, Request, Response } from "express";
+import { ObjectSchema } from "joi";
+import AppError from "../errors/app-error";
+import { StatusCodes } from "http-status-codes";
+
+export default function validation(validator: ObjectSchema) {
+    return async function (req: Request, res: Response, next: NextFunction) {
+        try {
+            req.body = await validator.validateAsync(req.body)
+            next()
+        } catch (e) {
+            next(new AppError(StatusCodes.UNPROCESSABLE_ENTITY, e.message))
+        }
+    }
+}
+
+# middlewares/not-found.ts
+import { NextFunction, Request, Response } from "express";
+import AppError from "../errors/app-error";
+import { StatusCodes } from "http-status-codes";
+
+export default function notFound(req: Request, res: Response, next: NextFunction) {
+    next(new AppError(StatusCodes.NOT_FOUND, 'not found'))
+}
+# middlewares/params-validation.ts
+import { NextFunction, Request, Response } from "express";
+import { ObjectSchema } from "joi";
+import AppError from "../errors/app-error";
+import { StatusCodes } from "http-status-codes";
+
+export default function paramsValidation(validator: ObjectSchema) {
+    return async function (req: Request, res: Response, next: NextFunction) {
+        try {
+            req.params = await validator.validateAsync(req.params)
+            next()
+        } catch (e) {
+            next(new AppError(StatusCodes.UNPROCESSABLE_ENTITY, e.message))
+        }
+    }
+}
+
+# middlewares/error/error-responder.ts
+import { NextFunction, Request, Response } from "express";
+import AppError from "../../errors/app-error";
+
+export default function errorResponder(err: Error, req: Request, res: Response, next: NextFunction) {
+    if(err instanceof AppError) {
+        res.status(err.status).send(err.message)
+    } else {
+        res.status(500).send(err.message)
+    }
+}
+# middlewares/error/error-logger.ts
+import { NextFunction, Request, Response } from "express";
+
+export default function errorLogger(err: Error, req: Request, res: Response, next: NextFunction) {
+    console.error(err.message)
+    next(err)
+}
+# models/Email.ts
+import { AllowNull, BelongsTo, Column, DataType, Default, ForeignKey, HasMany, Model, PrimaryKey, Table } from "sequelize-typescript";
+import User from "./user";
+
+@Table({
+    underscored: true,
+})
+export default class Email extends Model {
+
+    @PrimaryKey
+    @Default(DataType.UUIDV4)
+    @Column(DataType.UUID)
+    id: string;
+
+    @AllowNull(false)
+    @Column(DataType.STRING)
+    subject: string;
+
+    @AllowNull(false)
+    @Column(DataType.TEXT)
+    body: string;
+
+    @AllowNull(false)
+    @Column(DataType.STRING)
+    fromEmail: string;
+
+    @AllowNull(false)
+    @Column(DataType.STRING)
+    toEmail: string;
+
+    @AllowNull(false)
+    @Column(DataType.DATE)
+    sentAt: Date;
+
+    // Ensure @Column comes first 
+    @AllowNull(true)
+    @Column(DataType.DATE) 
+    readAt: Date;  // Fix order here
+
+    @ForeignKey(() => User)
+    @AllowNull(false)
+    @Column(DataType.UUID)
+    userId: string;
+
+    @BelongsTo(() => User)
+    user: User;
+
+}
+# models/user.ts
+import { AllowNull, Column, DataType, Default, Model, PrimaryKey, Table, HasMany } from "sequelize-typescript";
+import Email from "./Email";
+
+@Table({
+    underscored: true,
+})
+export default class User extends Model {
+
+    @PrimaryKey
+    @Default(DataType.UUIDV4)
+    @Column(DataType.UUID)
+    id: string;
+
+    @AllowNull(false)
+    @Column(DataType.STRING)
+    name: string;
+
+    @AllowNull(false)
+    @Column(DataType.STRING)
+    email: string;
+
+    @AllowNull(false)
+    @Column(DataType.STRING)
+    password: string;
+
+    @HasMany(() => Email)
+    emails: Email[];
+
+}
+# db/sequelize.ts
+import { Sequelize } from "sequelize-typescript";
+import config from 'config'
+import User from "../models/user";
+import Email from "../models/Email";
+
+const logging = config.get<boolean>('sequelize.logging') ? console.log : false
+
+const sequelize = new Sequelize({
+    // [ add ALL model classes you created to the array ]:
+    models: [  User, Email  ],
+    dialect: 'mysql',
+    ...config.get('db'),
+    logging,
+})
+
+export default sequelize
+# errors/app-error.ts
+export default class AppError extends Error {
+    constructor(public status: number, message: string) {
+        super(message)
+    }
+}
+# controllers/auth/controller.ts
+import { createHmac } from "crypto";
+import { sign } from 'jsonwebtoken'; 
+import config from 'config'
+import { Request, Response, NextFunction } from 'express';
+import User from "../../models/user";
+import AppError from "../../errors/app-error";
+import { StatusCodes } from "http-status-codes";
+import socket from "../../io/io";
+
+
+// hash password
+export function hashPassword(password: string): string {
+    return createHmac('sha256', config.get<string>('app.secret'))
+            .update(password)
+            .digest('hex')
+}
+
+// get all users
+export async function getAllUsers(req: Request, res: Response, next: NextFunction) {
+    try {
+        const users = await User.findAll();
+        res.json(users);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+// login
+export async function login(req: Request<{}, {}, {username: string, password: string}>, res: Response, next: NextFunction) {
+    try {
+        const { username, password } = req.body;
+
+        const user = await User.findOne({
+            where: {
+                email: username, 
+                password: hashPassword(password)
+            },
+        });
+
+        if (!user) return next(new AppError(StatusCodes.UNAUTHORIZED, 'wrong credentials'));
+        const jwt = sign(user.get({ plain: true }), config.get<string>('app.jwtSecret'));
+
+        // socket.emit("user:login", {
+        //     id: user.id,
+        //     name: user.name,
+        //     username: user.email,
+        //     time: new Date().toISOString(),
+        //   });
+      
+        res.json({ 
+            jwt,
+            messages: `Welcome ${user.name}!` 
+        });
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+// register
+export async function register(req: Request<{}, {}, {name: string, password: string, email: string}>, res: Response, next: NextFunction) {
+    try {
+        const { name, password, email } = req.body;
+
+        const existingUser = await User.findOne({
+            where: { email },
+        });
+
+        if (existingUser) return next(new AppError(StatusCodes.BAD_REQUEST, 'Email already in use'));
+
+        const user = await User.create({
+            name,
+            email, 
+            password: hashPassword(password),
+        });
+
+        res.json(user);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+// delete user
+export async function deleteUser(req: Request<{id: string}, {}, {}>, res: Response, next: NextFunction) {
+    try {
+        const { id } = req.params;
+        const user = await User.findByPk(id);
+
+        if (!user) return next(new AppError(StatusCodes.NOT_FOUND, 'user not found'));
+
+        await user.destroy();
+        res.json({ message: 'user deleted' });
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+// update user
+export async function updateUser(req: Request<{id: string}, {}, {name: string, password: string, email: string, role: string}>, res: Response, next: NextFunction) {
+    try {
+        const { id } = req.params;
+        const { name, email, password } = req.body;
+        const user = await User.findByPk(id);
+
+        if (!user) return next(new AppError(StatusCodes.NOT_FOUND, 'user not found'));
+
+        user.name = name;
+        user.email = email;
+        user.password = hashPassword(password);
+
+        await user.save();
+        res.json(user);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+// logout with userId
+
+export async function logout(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+    try {
+        const { id: userId } = req.params;
+
+        if (!userId) return next(new AppError(StatusCodes.BAD_REQUEST, 'Missing userId'));
+
+        const user = await User.findByPk(userId);
+        if (!user) return next(new AppError(StatusCodes.NOT_FOUND, 'User not found'));
+
+        socket.emit("user:login", {
+            id: user.id,
+            name: user.name,
+            username: user.email,
+            time: new Date().toISOString(),
+          });
+          
+          socket.emit("user:online", {
+            id: user.id,
+            name: user.name,
+            username: user.email,
+            time: new Date().toISOString(),
+          });
+
+        res.json({ message: `User ${user.name} logged out` });
+    } catch (e: any) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+# controllers/auth/validator.ts
+import Joi from 'joi';
+
+export const loginValidator = Joi.object({
+    email: Joi.string().required(),
+    password: Joi.string().required()
+})
+
+export const registerValidator = Joi.object({
+    name: Joi.string().min(5).required(),
+    password: Joi.string().required(),
+    email: Joi.string().email().required(),
+})
+
+export const updateUserValidator = registerValidator;
+
+export const deleteUserValidator = Joi.object({
+    id: Joi.string().required()
+})
+
+
+# controllers/email/controller.ts
+import AppError from '../../errors/app-error';
+import { Request, Response, NextFunction } from 'express';
+import { StatusCodes } from 'http-status-codes';
+import Email from 'models/Email';
+
+export async function getEmails(req: Request, res: Response, next: NextFunction) {
+    try {
+        const emails = await Email.findAll();
+        res.json(emails);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+export async function sendEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { subject, body, fromEmail, toEmail } = req.body;
+
+        const email = await Email.create({
+            subject,
+            body,
+            fromEmail,
+            toEmail,
+            sentAt: new Date(),
+        });
+
+        res.json(email);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+export async function getEmailInbox(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { userId } = req.params;
+
+        const emails = await Email.findAll({
+            where: {
+                toEmail: userId,
+            },
+        });
+
+        res.json(emails);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+export async function getEmailSent(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { userId } = req.params;
+
+        const emails = await Email.findAll({
+            where: {
+                fromEmail: userId,
+            },
+        });
+
+        res.json(emails);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+# server.ts
+import config from 'config';
+import app, { start } from './app';
+
+
+const port = config.get<string>('app.port');
+const name = config.get<string>('app.name');
+
+(async () =>{
+    await start()
+    app.listen(port, () => console.log(`${name} started on port ${port}...`))
+})()
