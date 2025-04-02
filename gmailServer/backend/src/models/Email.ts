@@ -29,9 +29,9 @@ export default class Email extends Model {
     @Column(DataType.STRING)
     toEmail: string;
 
-    @AllowNull(false)
+    @AllowNull(true)
     @Column(DataType.DATE)
-    sentAt: Date;
+    sentAt: Date | null;
 
     // Ensure @Column comes first 
     @AllowNull(true)
@@ -55,6 +55,10 @@ export default class Email extends Model {
     @AllowNull(true)
     @Column(DataType.UUID)
     replyToId: string;
+
+    @Default(false)
+    @Column(DataType.BOOLEAN)
+    isDraft: boolean;
 
     @BelongsTo(() => Email, { foreignKey: 'replyToId' })
     parentEmail: Email;
