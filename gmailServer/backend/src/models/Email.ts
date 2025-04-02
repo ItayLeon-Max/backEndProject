@@ -56,6 +56,10 @@ export default class Email extends Model {
     @Column(DataType.UUID)
     replyToId: string;
 
+    @Default(false)
+    @Column(DataType.BOOLEAN)
+    isDraft: boolean;
+
     @BelongsTo(() => Email, { foreignKey: 'replyToId' })
     parentEmail: Email;
 

@@ -3,6 +3,8 @@ import { Request, Response, NextFunction } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import Email from '../../models/email';
 import User from '../../models/user';
+import Draft from '../../models/draft';
+
 
 export async function getEmails(req: Request, res: Response, next: NextFunction) {
     try {
@@ -23,6 +25,18 @@ export async function getEmails(req: Request, res: Response, next: NextFunction)
 export async function sendEmail(req: Request, res: Response, next: NextFunction) {
     try {
         const { subject, body, fromEmail, toEmail, userId, replyToId, isDraft = false } = req.body;
+
+        if(isDraft) {
+            const draft = await Draft.create({
+                subject,
+                body,
+                toEmail,
+                userId,
+                lastEditedAt: new Date()
+            });
+            res.status(StatusCodes.CREATED).json(draft);
+            return;
+        } 
 
         const emailData: any = {
             subject,

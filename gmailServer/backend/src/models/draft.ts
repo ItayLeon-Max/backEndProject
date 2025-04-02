@@ -9,8 +9,12 @@ export default class Draft extends Model {
   @ForeignKey(() => User) @AllowNull(false) @Column(DataType.UUID)
   userId: string;
 
-  @Column(DataType.STRING) subject: string;
-  @Column(DataType.TEXT) body: string;
+  @Column(DataType.STRING)
+  subject: string;
+
+  @Column(DataType.TEXT)
+  body: string;
+  
   @Column(DataType.STRING) toEmail: string;
   @Column(DataType.DATE) lastEditedAt: Date;
 
