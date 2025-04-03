@@ -15,8 +15,9 @@ export default function authenticate(req: Request, res: Response, next: NextFunc
     const token = authHeader.split(" ")[1];
     try {
         const decoded = jwt.verify(token, config.get<string>("app.jwtSecret"));
-        // req.user = decoded; 
+        
         (req as any).user = decoded;
+        
         next();
     } catch (e) {
         next(new AppError(StatusCodes.UNAUTHORIZED, "Invalid token"));
