@@ -1,4 +1,5 @@
-import { deleteEmail, getEmailInbox, getEmails, getEmailSent, getEmailThread, readEmailAt, replyToEmail, sendEmail } from "../../controllers/email/controller";
+import authenticate from "../../middlewares/auth";
+import { deleteEmail, getEmailInbox, getEmails, getEmailSent, getEmailThread, readEmailAt, replyToEmail, searchEmails, sendEmail } from "../../controllers/email/controller";
 import { Router } from "express";
 
 
@@ -12,5 +13,6 @@ emailRouter.post("/", sendEmail); // send email
 emailRouter.post("/read/:emailId", readEmailAt) // mark email as read
 emailRouter.post("/reply/:emailId", replyToEmail) // reply to email
 emailRouter.delete("/:emailId/:userId", deleteEmail) // delete email
+emailRouter.get("/search", authenticate ,searchEmails); // search emails
 
 export default emailRouter;

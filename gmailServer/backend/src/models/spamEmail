@@ -1,0 +1,18 @@
+import { Table, Model, Column, DataType, ForeignKey } from "sequelize-typescript";
+import User from "./user";
+import Email from "./email";
+
+@Table({
+  tableName: "spam_emails",
+  underscored: true,
+  timestamps: false,
+})
+export default class SpamEmail extends Model {
+  @ForeignKey(() => User)
+  @Column(DataType.UUID)
+  userId: string;
+
+  @ForeignKey(() => Email)
+  @Column(DataType.UUID)
+  emailId: string;
+}

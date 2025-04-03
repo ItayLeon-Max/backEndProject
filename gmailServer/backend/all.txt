@@ -1,3 +1,12 @@
+# routers/draft/draft.ts
+import { getDrafts } from "../../controllers/draft/controller";
+import { Router } from "express";
+
+const draftRouter = Router();
+
+draftRouter.get("/:userId", getDrafts); // get all drafts for a user
+
+export default draftRouter;
 # routers/auth/auth.ts
 import { Router } from 'express';
 import { deleteUser, getAllUsers, login, logout, register, updateUser } from '../../controllers/auth/controller';
@@ -26,7 +35,7 @@ labelRouter.post("/", createLabel);
 
 export default labelRouter; 
 # routers/email-label/email-labels.ts
-import { addLabelToEmail } from "controllers/email-labels/controller";
+import { addLabelToEmail } from "../../controllers/email-labels/controller";
 import { Router } from "express";
 
 const emailLabelRouter = Router();
@@ -50,8 +59,19 @@ emailRouter.post("/read/:emailId", readEmailAt) // mark email as read
 emailRouter.post("/reply/:emailId", replyToEmail) // reply to email
 emailRouter.delete("/:emailId/:userId", deleteEmail) // delete email
 
-
 export default emailRouter;
+# types/express/index.d.ts
+import { User } from '../../models/user';
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: Partial<User>;
+    }
+  }
+}
+
+export {};
 # app.ts
 import express, { json } from "express"
 import config from 'config'
@@ -64,6 +84,8 @@ import authRouter from "./routers/auth/auth"
 import emailRouter from "../src/routers/email/email"
 import labelRouter from "../src/routers/label/label"
 import emailLabelRouter from "../src/routers/email-label/email-labels"
+import draftRouter from "../src/routers/draft/draft"
+import '../types/express';
 
 
 const port = config.get<string>('app.port')
@@ -84,6 +106,7 @@ export async function start() {
     app.use('/auth', authRouter)
     app.use('/emails', emailRouter)
     app.use('/labels', labelRouter, emailLabelRouter)
+    app.use("/draft", draftRouter)
     
 
     // special notFound middleware
@@ -177,6 +200,53 @@ export default function errorLogger(err: Error, req: Request, res: Response, nex
     console.error(err.message)
     next(err)
 }
+# middlewares/auth.ts
+// middlewares/auth.ts
+import { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import config from "config";
+import AppError from "../errors/app-error";
+import { StatusCodes } from "http-status-codes";
+
+export default function authenticate(req: Request, res: Response, next: NextFunction) {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return next(new AppError(StatusCodes.UNAUTHORIZED, "Missing or invalid token"));
+    }
+
+    const token = authHeader.split(" ")[1];
+    try {
+        const decoded = jwt.verify(token, config.get<string>("app.jwtSecret"));
+        req.user = decoded;
+        next();
+    } catch (e) {
+        next(new AppError(StatusCodes.UNAUTHORIZED, "Invalid token"));
+    }
+}
+# models/draft.ts
+import { AllowNull, BelongsTo, Column, DataType, Default, ForeignKey, Model, PrimaryKey, Table } from "sequelize-typescript";
+import User from "./user";
+
+@Table({ underscored: true })
+export default class Draft extends Model {
+  @PrimaryKey @Default(DataType.UUIDV4) @Column(DataType.UUID)
+  id: string;
+
+  @ForeignKey(() => User) @AllowNull(false) @Column(DataType.UUID)
+  userId: string;
+
+  @Column(DataType.STRING)
+  subject: string;
+
+  @Column(DataType.TEXT)
+  body: string;
+  
+  @Column(DataType.STRING) toEmail: string;
+  @Column(DataType.DATE) lastEditedAt: Date;
+
+  @BelongsTo(() => User) user: User;
+}
 # models/email.ts
 import { AllowNull, BelongsTo, BelongsToMany, Column, DataType, Default, ForeignKey, HasMany, Model, PrimaryKey, Table } from "sequelize-typescript";
 import User from "../models/user";
@@ -209,9 +279,9 @@ export default class Email extends Model {
     @Column(DataType.STRING)
     toEmail: string;
 
-    @AllowNull(false)
+    @AllowNull(true)
     @Column(DataType.DATE)
-    sentAt: Date;
+    sentAt: Date | null;
 
     // Ensure @Column comes first 
     @AllowNull(true)
@@ -235,6 +305,10 @@ export default class Email extends Model {
     @AllowNull(true)
     @Column(DataType.UUID)
     replyToId: string;
+
+    @Default(false)
+    @Column(DataType.BOOLEAN)
+    isDraft: boolean;
 
     @BelongsTo(() => Email, { foreignKey: 'replyToId' })
     parentEmail: Email;
@@ -326,12 +400,13 @@ import User from "../models/user";
 import Email from "../models/email";
 import Label from "../models/labels";
 import EmailLabel from "../models/emailLabel";
+import Draft from "../models/draft";
 
 const logging = config.get<boolean>('sequelize.logging') ? console.log : false
 
 const sequelize = new Sequelize({
     // [ add ALL model classes you created to the array ]:
-    models: [  User, Email, Label, EmailLabel  ],
+    models: [  User, Email, Label, EmailLabel, Draft  ],
     dialect: 'mysql',
     ...config.get('db'),
     logging,
@@ -342,6 +417,31 @@ export default sequelize
 export default class AppError extends Error {
     constructor(public status: number, message: string) {
         super(message)
+    }
+}
+# controllers/draft/controller.ts
+import AppError from '../../errors/app-error';
+import { Request, Response, NextFunction } from 'express';
+import { StatusCodes } from 'http-status-codes';
+import Email from '../../models/email';
+import User from '../../models/user';
+
+export async function getDrafts(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { userId } = req.params;
+        const user = await User.findByPk(userId);
+        if (!user) return next(new AppError(StatusCodes.NOT_FOUND, 'User not found'));
+
+        const drafts = await Email.findAll({
+            where: {
+                userId: user.id,
+                isDraft: true
+            }
+        });
+
+        res.json(drafts);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
     }
 }
 # controllers/auth/controller.ts
@@ -585,15 +685,25 @@ export async function createLabel(req: Request, res: Response, next: NextFunctio
     }
 }
 # controllers/email/controller.ts
+import '../../types/express';
 import AppError from '../../errors/app-error';
 import { Request, Response, NextFunction } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import Email from '../../models/email';
 import User from '../../models/user';
+import Draft from '../../models/draft';
+import { Op } from 'sequelize';
 
 export async function getEmails(req: Request, res: Response, next: NextFunction) {
     try {
-        const emails = await Email.findAll();
+        const emails = await Email.findAll({
+            include: [{
+                association: 'labels',
+                attributes: ['id', 'name'],
+                through: {
+                    attributes: []
+             }}],
+        });
         res.json(emails);
     } catch (e) {
         next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
@@ -602,18 +712,35 @@ export async function getEmails(req: Request, res: Response, next: NextFunction)
 
 export async function sendEmail(req: Request, res: Response, next: NextFunction) {
     try {
-        const { subject, body, fromEmail, toEmail, userId, replyToId } = req.body;
+        const { subject, body, fromEmail, toEmail, userId, replyToId, isDraft = false } = req.body;
 
-        const email = await Email.create({
+        if(isDraft) {
+            const draft = await Draft.create({
+                subject,
+                body,
+                toEmail,
+                userId,
+                lastEditedAt: new Date()
+            });
+            res.status(StatusCodes.CREATED).json(draft);
+            return;
+        } 
+
+        const emailData: any = {
             subject,
             body,
             fromEmail,
             toEmail,
-            sentAt: new Date(),
             userId,
-            replyToId
-        });
-        
+            replyToId,
+            isDraft
+        };
+
+        if (!isDraft) {
+            emailData.sentAt = new Date();
+        }
+
+        const email = await Email.create(emailData);
 
         res.json(email);
     } catch (e) {
@@ -632,8 +759,14 @@ export async function getEmailInbox(req: Request, res: Response, next: NextFunct
             where: {
                 toEmail: user.email,
                 deletedByReceiver: false,
-                replyToId: null 
+                replyToId: null,
+                isDraft: false
             },
+            include: [{
+                association: 'labels',
+                attributes: ['id', 'name'],
+                through: { attributes: [] }
+            }]
         });
 
         res.json(emails);
@@ -748,7 +881,39 @@ export async function getEmailThread(req: Request, res: Response, next: NextFunc
     }
 }
 
+export async function searchEmails(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { query } = req.query;
+        const user = req.user;
 
+        if (!query || typeof query !== "string") {
+            return next(new AppError(StatusCodes.BAD_REQUEST, "Missing search query"));
+        }
+
+        const emails = await Email.findAll({
+            where: {
+                [Op.and]: [
+                    {
+                        subject: {
+                            [Op.like]: `%${query}%`
+                        }
+                    },
+                    {
+                        [Op.or]: [
+                            { toEmail: user.email },
+                            { fromEmail: user.email }
+                        ]
+                    },
+                    { isDraft: false }
+                ]
+            }
+        });
+
+        res.json(emails);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
 
 # server.ts
 import config from 'config';

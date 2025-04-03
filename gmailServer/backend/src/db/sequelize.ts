@@ -6,6 +6,7 @@ import Label from "../models/labels";
 import EmailLabel from "../models/emailLabel";
 import Draft from "../models/draft";
 
+
 const logging = config.get<boolean>('sequelize.logging') ? console.log : false
 
 const sequelize = new Sequelize({

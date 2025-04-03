@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { deleteUser, getAllUsers, login, logout, register, updateUser } from '../../controllers/auth/controller';
+import { deleteUser, forgotPassword, getAllUsers, login, logout, register, resetPassword, updateUser } from '../../controllers/auth/controller';
 import validation from '../../middlewares/validation';
 import { deleteUserValidator, loginValidator, registerValidator, updateUserValidator } from '../../controllers/auth/validator';
 
@@ -12,5 +12,7 @@ authRouter.post('/register', validation(registerValidator), register);
 authRouter.delete('/:id', validation(deleteUserValidator) ,deleteUser);
 authRouter.put('/:id', validation(updateUserValidator) ,updateUser);
 authRouter.post('/logout/:id', logout);
+authRouter.post('/forgot-password', forgotPassword)
+authRouter.post('/reset-password/:token', resetPassword)
 
 export default authRouter;
