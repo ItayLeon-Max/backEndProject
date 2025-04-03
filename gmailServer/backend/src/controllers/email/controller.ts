@@ -4,7 +4,11 @@ import { StatusCodes } from 'http-status-codes';
 import Email from '../../models/email';
 import User from '../../models/user';
 import Draft from '../../models/draft';
+import { Op } from 'sequelize';
 
+interface AuthRequest extends Request {
+    user?: {email: string};
+}
 
 export async function getEmails(req: Request, res: Response, next: NextFunction) {
     try {
@@ -188,6 +192,41 @@ export async function getEmailThread(req: Request, res: Response, next: NextFunc
         });
 
         res.json({ email, replies });
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+export async function searchEmails(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+        const { query } = req.query;
+        const user = req.user;
+
+        if (!user) return next(new AppError(StatusCodes.UNAUTHORIZED, "Missing user"));
+        if (!query || typeof query !== "string") {
+            return next(new AppError(StatusCodes.BAD_REQUEST, "Missing search query"));
+        }
+
+        const emails = await Email.findAll({
+            where: {
+                [Op.and]: [
+                    {
+                        subject: {
+                            [Op.like]: `%${query}%`
+                        }
+                    },
+                    {
+                        [Op.or]: [
+                            { toEmail: user.email },
+                            { fromEmail: user.email }
+                        ]
+                    },
+                    { isDraft: false }
+                ]
+            }
+        });
+
+        res.json(emails);
     } catch (e) {
         next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
     }

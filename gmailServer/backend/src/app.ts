@@ -11,7 +11,6 @@ import labelRouter from "../src/routers/label/label"
 import emailLabelRouter from "../src/routers/email-label/email-labels"
 import draftRouter from "../src/routers/draft/draft"
 
-
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
 const force = config.get<boolean>('sequelize.sync.force')
