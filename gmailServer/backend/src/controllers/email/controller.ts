@@ -35,6 +35,7 @@ export async function sendEmail(req: Request, res: Response, next: NextFunction)
                 subject,
                 body,
                 toEmail,
+                fromEmail,
                 userId,
                 lastEditedAt: new Date()
             });
