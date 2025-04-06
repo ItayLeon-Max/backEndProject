@@ -38,3 +38,35 @@ export async function createLabel(req: Request, res: Response, next: NextFunctio
         next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
     }
 }
+
+export async function updateLabel(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { labelId } = req.params;
+        const { name } = req.body;
+
+        const label = await Label.findByPk(labelId);
+        if (!label) return next(new AppError(StatusCodes.NOT_FOUND, 'Label not found'));
+
+        label.name = name;
+        await label.save();
+
+        res.json(label);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+export async function deleteLabel(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { labelId } = req.params;
+
+        const label = await Label.findByPk(labelId);
+        if (!label) return next(new AppError(StatusCodes.NOT_FOUND, 'Label not found'));
+
+        await label.destroy();
+
+        res.status(StatusCodes.NO_CONTENT).send();
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
