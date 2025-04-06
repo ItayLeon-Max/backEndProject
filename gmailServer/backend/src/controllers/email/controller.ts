@@ -53,9 +53,7 @@ export async function sendEmail(req: Request, res: Response, next: NextFunction)
             isDraft
         };
 
-        if (!isDraft) {
-            emailData.sentAt = new Date();
-        }
+        if (!isDraft) emailData.sentAt = new Date();
 
         const email = await Email.create(emailData);
 
