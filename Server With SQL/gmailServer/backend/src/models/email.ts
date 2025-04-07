@@ -60,6 +60,10 @@ export default class Email extends Model {
     @Column(DataType.BOOLEAN)
     isDraft: boolean;
 
+    @Default(false)
+    @Column(DataType.BOOLEAN)
+    isSpam: boolean;
+
     @BelongsTo(() => Email, { foreignKey: 'replyToId' })
     parentEmail: Email;
 

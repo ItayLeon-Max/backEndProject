@@ -24,6 +24,8 @@ export async function getLabels(req: Request, res: Response, next: NextFunction)
     }
 }
 
+
+// createLabel function
 export async function createLabel(req: Request, res: Response, next: NextFunction) {
     try {
         const { name } = req.body;
@@ -34,6 +36,40 @@ export async function createLabel(req: Request, res: Response, next: NextFunctio
         const label = await Label.create({ name });
 
         res.status(StatusCodes.CREATED).json(label);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+// updateLabel function
+export async function updateLabel(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { labelId } = req.params;
+        const { name } = req.body;
+
+        const label = await Label.findByPk(labelId);
+        if (!label) return next(new AppError(StatusCodes.NOT_FOUND, 'Label not found'));
+
+        label.name = name;
+        await label.save();
+
+        res.json(label);
+    } catch (e) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+
+// deleteLabel function
+export async function deleteLabel(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { labelId } = req.params;
+
+        const label = await Label.findByPk(labelId);
+        if (!label) return next(new AppError(StatusCodes.NOT_FOUND, 'Label not found'));
+
+        await label.destroy();
+
+        res.status(StatusCodes.NO_CONTENT).send();
     } catch (e) {
         next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
     }

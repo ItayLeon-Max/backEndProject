@@ -27,3 +27,25 @@ export async function addLabelToEmail(req: Request, res: Response, next: NextFun
     }
 }
 
+export async function removeLabelFromEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { emailId } = req.params;
+        const { labelId } = req.body;
+
+        const email = await Email.findByPk(emailId);
+        if (!email) return next(new AppError(StatusCodes.NOT_FOUND, 'Email not found'));
+
+        const label = await Label.findByPk(labelId);
+        if (!label) return next(new AppError(StatusCodes.NOT_FOUND, 'Label not found'));
+
+        const existing = await EmailLabel.findOne({ where: { emailId, labelId } });
+        if (!existing) return next(new AppError(StatusCodes.CONFLICT, 'Label not attached to email'));
+
+        await existing.destroy();
+
+        res.status(StatusCodes.OK).json({ message: '✅ Label removed from email' });
+    } catch (e: any) {
+        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+    }
+}
+

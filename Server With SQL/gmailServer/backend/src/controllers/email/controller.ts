@@ -29,12 +29,13 @@ export async function getEmails(req: Request, res: Response, next: NextFunction)
 export async function sendEmail(req: Request, res: Response, next: NextFunction) {
     try {
         const { subject, body, fromEmail, toEmail, userId, replyToId, isDraft = false } = req.body;
-
+        
         if(isDraft) {
             const draft = await Draft.create({
                 subject,
                 body,
                 toEmail,
+                fromEmail,
                 userId,
                 lastEditedAt: new Date()
             });
@@ -52,9 +53,7 @@ export async function sendEmail(req: Request, res: Response, next: NextFunction)
             isDraft
         };
 
-        if (!isDraft) {
-            emailData.sentAt = new Date();
-        }
+        if (!isDraft) emailData.sentAt = new Date();
 
         const email = await Email.create(emailData);
 
