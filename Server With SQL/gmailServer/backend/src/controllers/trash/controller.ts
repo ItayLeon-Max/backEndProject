@@ -61,14 +61,23 @@ export async function moveEmailToTrash(req: Request, res: Response, next: NextFu
 
 export async function deleteEmailForEver(req: Request, res: Response, next: NextFunction) {
     try {
-        const { emailId } = req.params;
+        const { emailId, userId } = req.params;
 
-        const email = await TrashEmail.findByPk(emailId);
-        if (!email) return next(new AppError(StatusCodes.NOT_FOUND, 'Email not found in trash'));
+        const trashEntry = await TrashEmail.findOne({
+            where: {
+                emailId,
+                userId
+            }
+        });
 
-        await email.destroy();
+        if (!trashEntry) {
+            return next(new AppError(StatusCodes.NOT_FOUND, 'Email not found in trash'));
+        }
 
-        res.status(StatusCodes.OK).json({ message: 'Email deleted for ever' });
+        await trashEntry.destroy();
+        await Email.destroy({ where: { id: emailId } });
+
+        res.status(StatusCodes.OK).json({ message: 'Email deleted forever' });
     } catch (e) {
         next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
     }

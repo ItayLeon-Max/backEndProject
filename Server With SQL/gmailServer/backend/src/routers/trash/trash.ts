@@ -5,6 +5,6 @@ const trashRouter = Router();
 
 trashRouter.get("/:userId", getTrash);
 trashRouter.post("/:emailId/:userId", moveEmailToTrash);
-trashRouter.delete("/:emailId", deleteEmailForEver);
+trashRouter.delete("/:userId/:emailId", deleteEmailForEver);
 
 export default trashRouter;
