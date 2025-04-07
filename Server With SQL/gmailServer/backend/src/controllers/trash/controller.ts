@@ -11,6 +11,7 @@ export async function getTrash(req: Request, res: Response, next: NextFunction) 
 
         const user = await User.findByPk(userId);
         if (!user) return next(new AppError(StatusCodes.NOT_FOUND, 'User not found'));
+        
 
         const trashEmails = await Email.findAll({
             where: {
