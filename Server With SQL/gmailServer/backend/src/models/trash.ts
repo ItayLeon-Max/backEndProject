@@ -16,6 +16,7 @@ export default class TrashEmail extends Model {
   @Column(DataType.UUID)
   userId: string;
 
+  
   @ForeignKey(() => Email)
   @Column(DataType.UUID)
   emailId: string;
