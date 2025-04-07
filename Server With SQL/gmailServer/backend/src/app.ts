@@ -11,6 +11,7 @@ import labelRouter from "../src/routers/label/label"
 import emailLabelRouter from "../src/routers/email-label/email-labels"
 import draftRouter from "../src/routers/draft/draft"
 import spamRouter from "../src/routers/spam/spam"
+import trashRouter from "../src/routers/trash/trash"
 
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
@@ -32,6 +33,7 @@ export async function start() {
     app.use('/labels', labelRouter, emailLabelRouter)
     app.use("/draft", draftRouter)
     app.use("/spam", spamRouter)
+    app.use("/trash", trashRouter)
     
 
     // special notFound middleware
