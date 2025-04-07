@@ -24,6 +24,8 @@ export async function getLabels(req: Request, res: Response, next: NextFunction)
     }
 }
 
+
+// createLabel function
 export async function createLabel(req: Request, res: Response, next: NextFunction) {
     try {
         const { name } = req.body;
@@ -39,6 +41,7 @@ export async function createLabel(req: Request, res: Response, next: NextFunctio
     }
 }
 
+// updateLabel function
 export async function updateLabel(req: Request, res: Response, next: NextFunction) {
     try {
         const { labelId } = req.params;
@@ -56,6 +59,7 @@ export async function updateLabel(req: Request, res: Response, next: NextFunctio
     }
 }
 
+// deleteLabel function
 export async function deleteLabel(req: Request, res: Response, next: NextFunction) {
     try {
         const { labelId } = req.params;
