@@ -1,6 +1,7 @@
 import passport from 'passport';
-import { Profile, Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import { Strategy as GoogleStrategy, Profile } from 'passport-google-oauth20';
 import config from 'config';
+import { GoogleUser } from '../../types/GoogleUser';
 
 passport.use(
   new GoogleStrategy(
@@ -9,8 +10,17 @@ passport.use(
       clientSecret: config.get<string>('google.clientSecret'),
       callbackURL: config.get<string>('google.redirectUri'),
     },
-    async (_accessToken, _refreshToken, profile: Profile, done) => {
-      return done(null, profile);
+    async (accessToken, refreshToken, profile, done) => {
+      const user = {
+        googleId: profile.id,
+        name: profile.displayName,
+        email: profile.emails?.[0]?.value || '',
+        accessToken,
+        refreshToken,
+      };
+
+      console.log("✅ Google Strategy finished, user:", user);
+      return done(null, user);
     }
   )
 );

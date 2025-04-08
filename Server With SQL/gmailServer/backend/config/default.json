@@ -22,8 +22,8 @@
         "url": "ws://127.0.0.1:3003"
     },
     "google": {
-    "clientId": "461160160467-d57aou6dq0smfl9k3bshru33ouff86pv.apps.googleusercontent.com",
-    "clientSecret": "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",
+    "clientId": "515971082819-30jdcij608d35ijut28ig1mtb14e4cv0.apps.googleusercontent.com",
+    "clientSecret": "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",
     "redirectUri": "http://localhost:3000/auth/google/callback"
   }
 }

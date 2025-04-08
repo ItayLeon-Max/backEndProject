@@ -30,13 +30,9 @@ export async function start() {
 
     app.use(json()) // a middleware to extract the post/put/patch data and save it to the request object in case the content type of the request is application/json
 
-    app.use(session({
-        secret: config.get<string>('app.secret'),
-        resave: false,
-        saveUninitialized: false
-      }));
-      app.use(passport.initialize());
-      app.use(passport.session());
+    
+    app.use(passport.initialize());
+     
 
     // routers
     app.use('/auth', authRouter,googleRouter)
