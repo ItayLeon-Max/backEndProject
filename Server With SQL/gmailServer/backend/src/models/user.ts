@@ -23,6 +23,10 @@ export default class User extends Model {
     @Column(DataType.STRING)
     password: string;
 
+    @AllowNull(true)
+    @Column(DataType.STRING)
+    googleId?: string;
+
     @HasMany(() => Email)
     emails: Email[];
 

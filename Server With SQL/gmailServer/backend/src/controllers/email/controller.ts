@@ -5,10 +5,7 @@ import Email from '../../models/email';
 import User from '../../models/user';
 import Draft from '../../models/draft';
 import { Op } from 'sequelize';
-
-interface AuthRequest extends Request {
-    user?: {email: string};
-}
+import { AuthRequest } from '../../types/AuthRequest';
 
 export async function getEmails(req: Request, res: Response, next: NextFunction) {
     try {
@@ -216,8 +213,8 @@ export async function searchEmails(req: AuthRequest, res: Response, next: NextFu
                     },
                     {
                         [Op.or]: [
-                            { toEmail: user.email },
-                            { fromEmail: user.email }
+                            { toEmail: user.emails?.[0].value },
+                            { fromEmail: user.emails?.[0].value }
                         ]
                     },
                     { isDraft: false }
