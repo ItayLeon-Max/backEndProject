@@ -11,6 +11,10 @@ import labelRouter from "../src/routers/label/label"
 import emailLabelRouter from "../src/routers/email-label/email-labels"
 import draftRouter from "../src/routers/draft/draft"
 import spamRouter from "../src/routers/spam/spam"
+import session from "express-session"
+import passport from "passport"
+import '../src/utils/passport/google-strategy'
+import googleRouter from "../src/routers/google-auth/google-auth"
 
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
@@ -26,8 +30,16 @@ export async function start() {
 
     app.use(json()) // a middleware to extract the post/put/patch data and save it to the request object in case the content type of the request is application/json
 
+    app.use(session({
+        secret: config.get<string>('app.secret'),
+        resave: false,
+        saveUninitialized: false
+      }));
+      app.use(passport.initialize());
+      app.use(passport.session());
+
     // routers
-    app.use('/auth', authRouter)
+    app.use('/auth', authRouter,googleRouter)
     app.use('/emails', emailRouter)
     app.use('/labels', labelRouter, emailLabelRouter)
     app.use("/draft", draftRouter)
