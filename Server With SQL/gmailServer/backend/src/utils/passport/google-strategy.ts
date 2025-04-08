@@ -6,9 +6,9 @@ import { GoogleUser } from '../../types/GoogleUser';
 passport.use(
   new GoogleStrategy(
     {
-      clientID: config.get<string>('google.clientId'),
-      clientSecret: config.get<string>('google.clientSecret'),
-      callbackURL: config.get<string>('google.redirectUri'),
+      clientID: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      callbackURL: process.env.GOOGLE_REDIRECT_URI!,
     },
     async (accessToken, refreshToken, profile, done) => {
       const user = {

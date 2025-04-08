@@ -52,9 +52,9 @@ export const sendEmail = (async (req: SendEmailRequest, res, next) => {
       if (!credentials) return next(new AppError(403, 'Missing credentials'));
   
       const oAuth2Client = new google.auth.OAuth2(
-        config.get<string>('google.clientId'),
-        config.get<string>('google.clientSecret'),
-        config.get<string>('google.redirectUri')
+        process.env.GOOGLE_CLIENT_ID as string,
+        process.env.GOOGLE_CLIENT_SECRET as string,
+        process.env.GOOGLE_REDIRECT_URI as string
       );
   
       oAuth2Client.setCredentials({
@@ -150,9 +150,9 @@ export async function getInbox(req: Request<{ userId: string }>, res: Response, 
       }
   
       const oAuth2Client = new google.auth.OAuth2(
-        config.get<string>('google.clientId'),
-        config.get<string>('google.clientSecret'),
-        config.get<string>('google.redirectUri')
+        process.env.GOOGLE_CLIENT_ID as string,
+        process.env.GOOGLE_CLIENT_SECRET as string,
+        process.env.GOOGLE_REDIRECT_URI as string
       );
   
       oAuth2Client.setCredentials({
@@ -208,9 +208,9 @@ export async function getInbox(req: Request<{ userId: string }>, res: Response, 
       if (!credentials) return next(new AppError(StatusCodes.FORBIDDEN, 'Missing Google credentials'));
   
       const oAuth2Client = new google.auth.OAuth2(
-        config.get<string>('google.clientId'),
-        config.get<string>('google.clientSecret'),
-        config.get<string>('google.redirectUri')
+        process.env.GOOGLE_CLIENT_ID as string,
+        process.env.GOOGLE_CLIENT_SECRET as string,
+        process.env.GOOGLE_REDIRECT_URI as string
       );
   
       oAuth2Client.setCredentials({
@@ -312,9 +312,9 @@ export async function replyToEmail(req: Request, res: Response, next: NextFuncti
       if (!credentials) return next(new AppError(StatusCodes.FORBIDDEN, 'No Google credentials'));
   
       const oAuth2Client = new google.auth.OAuth2(
-        config.get<string>('google.clientId'),
-        config.get<string>('google.clientSecret'),
-        config.get<string>('google.redirectUri')
+        process.env.GOOGLE_CLIENT_ID as string,
+        process.env.GOOGLE_CLIENT_SECRET as string,
+        process.env.GOOGLE_REDIRECT_URI as string
       );
   
       oAuth2Client.setCredentials({

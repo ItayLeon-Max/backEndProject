@@ -17,9 +17,9 @@ export const getDrafts = (async (req: Request, res: Response, next: NextFunction
         if (!credentials) return next(new AppError(StatusCodes.UNAUTHORIZED, 'Missing Google credentials'));
     
         const oAuth2Client = new google.auth.OAuth2(
-          config.get<string>('google.clientId'),
-          config.get<string>('google.clientSecret'),
-          config.get<string>('google.redirectUri')
+          process.env.GOOGLE_CLIENT_ID as string,
+          process.env.GOOGLE_CLIENT_SECRET as string,
+          process.env.GOOGLE_REDIRECT_URI as string
         );
     
         oAuth2Client.setCredentials({
