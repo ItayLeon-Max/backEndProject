@@ -14,9 +14,10 @@ googleRouter.get(
     scope: [
       'profile',
       'email',
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/gmail.compose'
+      'https://www.googleapis.com/auth/gmail.readonly', // Read emails
+      'https://www.googleapis.com/auth/gmail.send', // Send emails
+      'https://www.googleapis.com/auth/gmail.compose', // Compose emails
+      'https://www.googleapis.com/auth/gmail.modify' // Modify emails ---> to move to spam
     ],
     accessType: 'offline',
     prompt: 'consent'

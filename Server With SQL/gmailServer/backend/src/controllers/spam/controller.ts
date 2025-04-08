@@ -9,12 +9,10 @@ import GoogleCredential from '../../models/googleCredential';
 
 export const moveToSpam = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { userId, emailId, gmailMessageId } = req.body; 
+      const { userId, emailId } = req.body;
   
       const user = await User.findByPk(userId);
-      if (!user) {
-        return next(new AppError(StatusCodes.NOT_FOUND, 'User not found'));
-      }
+      if (!user) return next(new AppError(StatusCodes.NOT_FOUND, 'User not found'));
   
       const email = await Email.findOne({
         where: {
@@ -25,14 +23,10 @@ export const moveToSpam = async (req: Request, res: Response, next: NextFunction
         }
       });
   
-      if (!email) {
-        return next(new AppError(StatusCodes.NOT_FOUND, 'Email not found in inbox'));
-      }
+      if (!email) return next(new AppError(StatusCodes.NOT_FOUND, 'Email not found in inbox'));
   
       const credentials = await GoogleCredential.findOne({ where: { user_id: userId } });
-      if (!credentials) {
-        return next(new AppError(StatusCodes.UNAUTHORIZED, 'Missing Google credentials'));
-      }
+      if (!credentials) return next(new AppError(StatusCodes.UNAUTHORIZED, 'Missing Google credentials'));
   
       const oAuth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
@@ -47,13 +41,30 @@ export const moveToSpam = async (req: Request, res: Response, next: NextFunction
   
       const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
   
-      if (!gmailMessageId) {
-        return next(new AppError(StatusCodes.BAD_REQUEST, 'Missing gmailMessageId'));
+      const gmailMessages = await gmail.users.messages.list({
+        userId: 'me',
+        labelIds: ['INBOX'],
+        maxResults: 30,
+      });
+  
+      const messageId = gmailMessages.data.messages?.find(async (msg) => {
+        const full = await gmail.users.messages.get({ userId: 'me', id: msg.id! });
+        const headers = full.data.payload?.headers || [];
+  
+        const subject = headers.find(h => h.name === 'Subject')?.value;
+        const from = headers.find(h => h.name === 'From')?.value;
+        const to = headers.find(h => h.name === 'To')?.value;
+  
+        return subject === email.subject && from?.includes(email.fromEmail) && to?.includes(email.toEmail);
+      });
+  
+      if (!messageId || !messageId.id) {
+        return next(new AppError(StatusCodes.NOT_FOUND, 'Could not match email in Gmail'));
       }
   
       await gmail.users.messages.modify({
         userId: 'me',
-        id: gmailMessageId,
+        id: messageId.id,
         requestBody: {
           addLabelIds: ['SPAM'],
           removeLabelIds: ['INBOX']
@@ -65,8 +76,12 @@ export const moveToSpam = async (req: Request, res: Response, next: NextFunction
   
       await SpamEmail.create({ userId, emailId });
   
-      res.status(StatusCodes.CREATED).json({ message: 'Email moved to spam (locally + Gmail)' });
-    } catch (e) {
+      res.status(StatusCodes.CREATED).json({
+        message: 'Email moved to spam (locally + Gmail)',
+        gmailMessageId: messageId.id
+      });
+  
+    } catch (e: any) {
       next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
     }
   };
