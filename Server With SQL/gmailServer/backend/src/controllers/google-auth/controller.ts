@@ -1,27 +1,26 @@
-import { Request, Response } from 'express';
+// קובץ: src/controllers/google-auth/controller.ts
+import { Request, Response, NextFunction } from 'express';
 import User from '../../models/user';
+import GoogleCredential from '../../models/googleCredential';
+import { google } from 'googleapis';
 import { sign } from 'jsonwebtoken';
 import config from 'config';
 
-export async function handleGoogleCallback(req: Request, res: Response): Promise<void> {
-  const googleUser = req.user as any;
+export async function handleGoogleCallback(req: Request, res: Response, next: NextFunction) {
+  console.log("👉 req.user:", req.user);
 
-  if (!googleUser) {
-    res.status(401).json({ error: 'Google user not found' });
-    return;
-  }
+  const profile = req.user as any;
+  const googleId = profile.id;
+  const name = profile.displayName;
+  const email = profile.emails?.[0]?.value;
+  const accessToken = profile.accessToken;
+  const refreshToken = profile.refreshToken;
 
-  const email = googleUser.emails?.[0]?.value;
-  const name = googleUser.displayName;
-  const googleId = googleUser.id;
-
-  if (!email || !name || !googleId) {
-    res.status(400).json({ error: 'Missing Google user info' });
-    return;
+  if (!email || !name || !googleId || !accessToken || !refreshToken) {
+    return res.status(400).json({ error: 'Missing Google user info' });
   }
 
   let user = await User.findOne({ where: { email } });
-
   if (!user) {
     user = await User.create({
       name,
@@ -29,14 +28,40 @@ export async function handleGoogleCallback(req: Request, res: Response): Promise
       password: 'google_oauth_dummy',
       google_id: googleId
     });
-  } else if (!user.googleId) {
-    user.googleId = googleId;
-    await user.save();
-    
-
+    console.log("👉 req.user:", req.user);
   }
 
-  const jwt = sign(user.get({ plain: true }), config.get<string>('app.jwtSecret'));
+  await GoogleCredential.upsert({
+    user_id: user.id,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
 
+  const jwt = sign({ id: user.id }, config.get<string>('app.jwtSecret'));
   res.json({ jwt });
+}
+
+export async function getInbox(req: Request, res: Response, next: NextFunction) {
+  const userId = req.params.userId;
+  const user = await User.findByPk(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const credentials = await GoogleCredential.findOne({ where: { user_id: userId } });
+  if (!credentials) return res.status(403).json({ error: 'No Google credentials found' });
+
+  const oAuth2Client = new google.auth.OAuth2(
+    config.get<string>('google.clientId'),
+    config.get<string>('google.clientSecret'),
+    config.get<string>('google.redirectUri')
+  );
+
+  oAuth2Client.setCredentials({
+    access_token: credentials.accessToken,
+    refresh_token: credentials.refreshToken,
+  });
+
+  const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+  const messages = await gmail.users.messages.list({ userId: 'me', labelIds: ['INBOX'], maxResults: 10 });
+
+  res.json(messages.data);
 }
