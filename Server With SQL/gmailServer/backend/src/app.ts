@@ -1,3 +1,5 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express, { json } from "express"
 import config from 'config'
 import sequelize from "./db/sequelize"

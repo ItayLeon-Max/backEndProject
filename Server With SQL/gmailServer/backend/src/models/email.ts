@@ -64,6 +64,16 @@ export default class Email extends Model {
     @Column(DataType.BOOLEAN)
     isSpam: boolean;
 
+    @AllowNull(true)
+    @Column(DataType.STRING)
+    gmailId: string;
+
+    @Column(DataType.STRING)
+    gmailMessageId: string;
+
+    @Column(DataType.STRING)
+    threadId: string;
+
     @BelongsTo(() => Email, { foreignKey: 'replyToId' })
     parentEmail: Email;
 

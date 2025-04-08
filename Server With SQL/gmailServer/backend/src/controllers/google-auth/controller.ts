@@ -50,9 +50,9 @@ export async function getInbox(req: Request, res: Response, next: NextFunction) 
   if (!credentials) return res.status(403).json({ error: 'No Google credentials found' });
 
   const oAuth2Client = new google.auth.OAuth2(
-    config.get<string>('google.clientId'),
-    config.get<string>('google.clientSecret'),
-    config.get<string>('google.redirectUri')
+    process.env.GOOGLE_CLIENT_ID as string,
+    process.env.GOOGLE_CLIENT_SECRET as string,
+    process.env.GOOGLE_REDIRECT_URI as string
   );
 
   oAuth2Client.setCredentials({
