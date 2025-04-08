@@ -5,4 +5,4 @@ const draftRouter = Router();
 
 draftRouter.get("/:userId", getDrafts); // get all drafts for a user
 
-export default draftRouter;
+export default draftRouter; 
