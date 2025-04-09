@@ -18,7 +18,7 @@ export default class Email extends Model {
     subject: string;
 
     @AllowNull(false)
-    @Column(DataType.TEXT)
+    @Column(DataType.TEXT('long'))
     body: string;
 
     @AllowNull(false)

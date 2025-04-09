@@ -17,6 +17,8 @@ import session from "express-session"
 import passport from "passport"
 import '../src/utils/passport/google-strategy'
 import googleRouter from "../src/routers/google-auth/google-auth"
+import { syncAllUsersInboxOnStart } from '../src/service/gmailSync';
+import sentEmailRouter from '../src/routers/sentEmail/sentEmail';
 
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
@@ -26,6 +28,8 @@ const app = express();
 
 export async function start() {
     await sequelize.sync({ force })
+
+    await syncAllUsersInboxOnStart();
 
     // middlewares
     app.use(cors()) // allow any client to use this server
@@ -42,6 +46,8 @@ export async function start() {
     app.use('/labels', labelRouter, emailLabelRouter)
     app.use("/draft", draftRouter)
     app.use("/spam", spamRouter)
+    app.use("/sent", sentEmailRouter)
+    
     
 
     // special notFound middleware
