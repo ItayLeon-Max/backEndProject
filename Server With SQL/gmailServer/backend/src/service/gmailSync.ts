@@ -10,66 +10,75 @@ import EmailLabel from '../models/emailLabel';
 import SentEmail from '../models/sentEmail';
 
 export async function syncInboxEmails(userId: string) {
-  const user = await User.findByPk(userId);
-  if (!user) throw new Error('User not found');
-
-  const credentials = await GoogleCredential.findOne({ where: { user_id: userId } });
-  if (!credentials) throw new Error('Missing Google credentials');
-
-  const oAuth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
-  );
-
-  oAuth2Client.setCredentials({
-    access_token: credentials.accessToken,
-    refresh_token: credentials.refreshToken,
-  });
-
-  const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
-
-  const messagesResponse = await gmail.users.messages.list({
-    userId: 'me',
-    labelIds: ['INBOX'],
-    maxResults: 50
-  });
-
-  const messages = messagesResponse.data.messages || [];
-
-  for (const message of messages) {
-    const exists = await Email.findOne({ where: { gmailMessageId: message.id } });
-    if (exists) continue;
-
-    const msgDetail = await gmail.users.messages.get({ userId: 'me', id: message.id! });
-    const payload = msgDetail.data.payload;
-    const headers = payload?.headers || [];
-
-    const subject = headers.find(h => h.name === 'Subject')?.value || '';
-    const from = headers.find(h => h.name === 'From')?.value || '';
-    const to = headers.find(h => h.name === 'To')?.value || user.email;
-    const date = headers.find(h => h.name === 'Date')?.value;
-
-    const rawBody = payload?.parts?.find(p => p.mimeType === 'text/plain')?.body?.data ||
-                    payload?.body?.data;
-
-    const decodedBody = rawBody
-      ? Buffer.from(rawBody, 'base64').toString('utf-8')
-      : '';
-
-    await Email.create({
-      subject,
-      body: decodedBody,
-      fromEmail: from,
-      toEmail: to,
-      sentAt: date ? new Date(date) : null,
-      userId: user.id,
-      gmailId: msgDetail.data.id!,
-      gmailMessageId: msgDetail.data.id!,
-      threadId: msgDetail.data.threadId!,
+    const user = await User.findByPk(userId);
+    if (!user) throw new Error('User not found');
+  
+    const credentials = await GoogleCredential.findOne({ where: { user_id: userId } });
+    if (!credentials) throw new Error('Missing Google credentials');
+  
+    const oAuth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+  
+    oAuth2Client.setCredentials({
+      access_token: credentials.accessToken,
+      refresh_token: credentials.refreshToken,
     });
+  
+    const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+  
+    const messagesResponse = await gmail.users.messages.list({
+      userId: 'me',
+      labelIds: ['INBOX'],
+      maxResults: 50
+    });
+  
+    const messages = messagesResponse.data.messages || [];
+  
+    const detailedMessages = await Promise.all(
+      messages.map(msg => gmail.users.messages.get({ userId: 'me', id: msg.id! }))
+    );
+  
+    const sortedMessages = detailedMessages.sort((a, b) => {
+      const aDate = Number(a.data.internalDate || 0);
+      const bDate = Number(b.data.internalDate || 0);
+      return bDate - aDate;
+    });
+  
+    for (const msgDetail of sortedMessages) {
+      const exists = await Email.findOne({ where: { gmailMessageId: msgDetail.data.id } });
+      if (exists) continue;
+  
+      const payload = msgDetail.data.payload;
+      const headers = payload?.headers || [];
+  
+      const subject = headers.find(h => h.name === 'Subject')?.value || '';
+      const from = headers.find(h => h.name === 'From')?.value || '';
+      const to = headers.find(h => h.name === 'To')?.value || user.email;
+      const date = headers.find(h => h.name === 'Date')?.value;
+  
+      const rawBody = payload?.parts?.find(p => p.mimeType === 'text/plain')?.body?.data ||
+                      payload?.body?.data;
+  
+      const decodedBody = rawBody
+        ? Buffer.from(rawBody, 'base64').toString('utf-8')
+        : '';
+  
+      await Email.create({
+        subject,
+        body: decodedBody,
+        fromEmail: from,
+        toEmail: to,
+        sentAt: date ? new Date(date) : null,
+        userId: user.id,
+        gmailId: msgDetail.data.id!,
+        gmailMessageId: msgDetail.data.id!,
+        threadId: msgDetail.data.threadId!,
+      });
+    }
   }
-}
 
 export async function syncSpamEmails(userId: string) {
     const user = await User.findByPk(userId);
