@@ -165,7 +165,7 @@ export async function getInbox(req: Request<{ userId: string }>, res: Response, 
       const response = await gmail.users.messages.list({
         userId: 'me',
         labelIds: ['INBOX'],
-        maxResults: 10,
+        maxResults: 50,
       });
   
       const messages = await Promise.all(
@@ -223,7 +223,7 @@ export async function getInbox(req: Request<{ userId: string }>, res: Response, 
       const response = await gmail.users.messages.list({
         userId: 'me',
         labelIds: ['SENT'],
-        maxResults: 10,
+        maxResults: 50,
       });
   
       const messages = response.data.messages || [];
