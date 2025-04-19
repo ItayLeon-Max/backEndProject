@@ -13,7 +13,6 @@ import labelRouter from "../src/routers/label/label"
 import emailLabelRouter from "../src/routers/email-label/email-labels"
 import draftRouter from "../src/routers/draft/draft"
 import spamRouter from "../src/routers/spam/spam"
-import session from "express-session"
 import passport from "passport"
 import '../src/utils/passport/google-strategy'
 import googleRouter from "../src/routers/google-auth/google-auth"
