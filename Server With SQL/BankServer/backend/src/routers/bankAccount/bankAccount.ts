@@ -1,3 +1,4 @@
+import { authenticateToken } from "../../middlewares/authMiddleware";
 import { createAccount, getAccountById, getAllAccounts } from "../../controllers/bankAccount/controller";
 import { Router, Request } from "express";
 
@@ -14,6 +15,6 @@ const bankAccountRouter = Router();
 
 bankAccountRouter.get("/", getAllAccounts);
 bankAccountRouter.get("/:id", getAccountById);
-bankAccountRouter.post("/newAccount", createAccount);
+bankAccountRouter.post("/newAccount", authenticateToken ,createAccount);
 
 export default bankAccountRouter;

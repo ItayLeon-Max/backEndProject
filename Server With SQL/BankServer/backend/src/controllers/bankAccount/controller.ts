@@ -28,6 +28,9 @@ export async function getAllAccounts(req: AuthenticatedRequest, res: Response, n
 
 export async function createAccount(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
+
+        console.log('Decoded user:', req.user);
+
         const { accountNumber, currency, balance } = req.body;
         const userId = req.user.id;
 
