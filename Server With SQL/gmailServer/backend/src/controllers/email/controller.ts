@@ -57,7 +57,7 @@ export const sendEmail = (async (req: SendEmailRequest, res, next) => {
         process.env.GOOGLE_REDIRECT_URI as string
       );
   
-      oAuth2Client.setCredentials({
+      oAuth2Client.setCredentials({ 
         access_token: credentials.accessToken,
         refresh_token: credentials.refreshToken,
       });
