@@ -40,7 +40,7 @@ export async function getEmails(req: Request, res: Response, next: NextFunction)
     }
 }
 
-export const sendEmail = (async (req: SendEmailRequest, res, next) => {
+export const sendEmail = (async (req: SendEmailRequest, res, next) => { 
     try {
       const { userId } = req.params;
       const { to, subject, message, isDraft = false } = req.body;
