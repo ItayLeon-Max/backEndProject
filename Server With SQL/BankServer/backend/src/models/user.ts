@@ -8,7 +8,6 @@ import {
     PrimaryKey,
     Table,
 } from "sequelize-typescript";
-import BankAccount from "../models/bankAccount";
 
 @Table({
     tableName: "users",
@@ -41,8 +40,4 @@ export default class User extends Model {
     @Default("user")
     @Column(DataType.STRING)
     role: string; // 'admin' או 'user'
-    
-    @HasMany(() => BankAccount)
-    accounts: BankAccount[];
-
 }
