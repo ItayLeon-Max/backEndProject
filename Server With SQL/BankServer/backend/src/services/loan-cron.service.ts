@@ -12,14 +12,13 @@ function round2(n: number) {
 export async function processDueLoanPayments() {
   const now = new Date();
 
-  // נביא תשלומים שהגיע מועד ועדיין לא שולמו
   const duePayments = await LoanPayment.findAll({
     where: {
       dueDate: { [Op.lte]: now },
       status: { [Op.in]: [LoanPaymentStatus.PENDING, LoanPaymentStatus.LATE] },
     },
     order: [["dueDate", "ASC"]],
-    limit: 200, // כדי לא להפיל שרת אם יש הרבה
+    limit: 200,
   });
 
   let paid = 0;
@@ -44,13 +43,10 @@ async function tryPaySingleInstallment(paymentId: string): Promise<"paid" | "lat
   return sequelize.transaction(async (t: SequelizeTx) => {
     const payment = await LoanPayment.findByPk(paymentId, { transaction: t, lock: t.LOCK.UPDATE });
     if (!payment) return "skipped";
-
-    // אולי כבר שולם במקביל
     if (payment.status === LoanPaymentStatus.PAID) return "skipped";
 
     const loan = await Loan.findByPk(payment.loanId, { transaction: t, lock: t.LOCK.UPDATE });
     if (!loan) return "skipped";
-
     if (loan.status !== LoanStatus.ACTIVE) return "skipped";
 
     const account = await BankAccount.findByPk(loan.accountId, { transaction: t, lock: t.LOCK.UPDATE });
@@ -59,7 +55,6 @@ async function tryPaySingleInstallment(paymentId: string): Promise<"paid" | "lat
     const amountDue = Number(payment.amountDue);
     const bal = Number(account.balance);
 
-    // אין כסף → late (ננסה שוב מחר)
     if (bal < amountDue) {
       payment.status = LoanPaymentStatus.LATE;
       await payment.save({ transaction: t });
@@ -67,10 +62,10 @@ async function tryPaySingleInstallment(paymentId: string): Promise<"paid" | "lat
     }
 
     // 1) מורידים כסף מהחשבון
-    account.balance = round2(bal - amountDue) as any;
+    account.balance = round2(bal - amountDue);
     await account.save({ transaction: t });
 
-    // 2) שומרים Transaction (כמשיכה)
+    // 2) Transaction כמשיכה (מינוס)
     await Transaction.create(
       {
         type: TransactionType.WITHDRAW,
@@ -78,23 +73,23 @@ async function tryPaySingleInstallment(paymentId: string): Promise<"paid" | "lat
         description: `Loan payment (${loan.id})`,
         fromAccountId: account.id,
         toAccountId: null,
-      } as any,
+      },
       { transaction: t }
     );
 
-    // 3) מסמנים payment כ-paid
+    // 3) מסמנים תשלום כ-PAID
     payment.status = LoanPaymentStatus.PAID;
     payment.paidAt = new Date();
     await payment.save({ transaction: t });
 
-    // 4) מורידים מהיתרה של ההלוואה רק את חלק הקרן
+    // 4) מורידים מהקרן רק principalPart
     const remaining = Number(loan.remainingPrincipal);
     const principalPart = Number(payment.principalPart);
 
     const newRemaining = round2(Math.max(0, remaining - principalPart));
     loan.remainingPrincipal = newRemaining.toFixed(2);
 
-    // אם נגמרה הקרן → סוגרים הלוואה
+    // ✅ אם נגמרה הקרן → CLOSED
     if (newRemaining <= 0) {
       loan.status = LoanStatus.CLOSED;
     }

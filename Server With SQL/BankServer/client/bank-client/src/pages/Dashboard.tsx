@@ -41,14 +41,35 @@ function formatDate(iso: string) {
   }
 }
 
+// function extractErrorMessage(e: unknown): string {
+//   if (!axios.isAxiosError(e)) return "Request failed";
+//   const data = e.response?.data;
+//   if (data && typeof data === "object" && "message" in data) {
+//     const msg = (data as { message?: unknown }).message;
+//     if (typeof msg === "string") return msg;
+//   }
+//   return e.message || "Request failed";
+// }
+
 function extractErrorMessage(e: unknown): string {
   if (!axios.isAxiosError(e)) return "Request failed";
+
+  const status = e.response?.status;
   const data = e.response?.data;
-  if (data && typeof data === "object" && "message" in data) {
-    const msg = (data as { message?: unknown }).message;
-    if (typeof msg === "string") return msg;
+
+  if (typeof data === "string") return `(${status ?? "?"}) ${data}`;
+
+  if (data && typeof data === "object") {
+    if ("message" in data && typeof (data as { message?: unknown }).message === "string") {
+      return `(${status ?? "?"}) ${(data as { message?: string }).message}`;
+    }
+    if ("errors" in data) {
+      return `(${status ?? "?"}) ${JSON.stringify((data as { errors?: unknown }).errors)}`;
+    }
+    return `(${status ?? "?"}) ${JSON.stringify(data)}`;
   }
-  return e.message || "Request failed";
+
+  return `Request failed (${status ?? "?"})`;
 }
 
 function decodeJwtPayload(token: string): JwtPayload | null {
