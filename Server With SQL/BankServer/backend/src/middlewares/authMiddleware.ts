@@ -1,26 +1,27 @@
-import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import config from "config";
 
 interface AuthenticatedRequest extends Request {
   user?: any;
 }
 
 export const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
-    res.status(401).json({ message: 'Access token missing' });
+    res.status(401).json({ message: "Access token missing" });
     return;
   }
 
-  jwt.verify(token, process.env.JWT_SECRET as string, (err, decoded) => {
-    if (err || !decoded) { 
-      res.status(403).json({ message: 'Invalid or expired token' });
+  const secret = config.get<string>("app.jwtSecret"); 
+
+  jwt.verify(token, secret, (err, decoded) => {
+    if (err || !decoded) {
+      res.status(403).json({ message: "Invalid or expired token" });
       return;
     }
-
-    console.log('Decoded JWT:', decoded); 
 
     (req as AuthenticatedRequest).user = decoded;
     next();

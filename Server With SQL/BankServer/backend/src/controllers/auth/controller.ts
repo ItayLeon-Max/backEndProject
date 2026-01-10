@@ -6,7 +6,11 @@ import User from "../../models/user";
 import AppError from "../../errors/app-error";
 import { StatusCodes } from "http-status-codes";
 import socket from "../../io/io";
+import { generateUniqueAccountNumber } from "../../utils/generateAccountNumber";
+import sequelize from "../../db/sequelize";
+import BankAccount from "../../models/bankAccount";
 
+console.log("🔥 AUTH CONTROLLER FILE LOADED");
 
 // hash password
 export function hashPassword(password: string): string {
@@ -58,22 +62,60 @@ export async function login(req: Request<{}, {}, {username: string, password: st
 }
 
 // register
-export async function register(req: Request<{}, {}, {name: string, username: string, password: string, email: string, role: string}>, res: Response, next: NextFunction) {
-    try {
-        const { name, username, password, email, role } = req.body;
-        const user = await User.create({
-            name,
-            userName: username, 
-            password: hashPassword(password),
-            email,
-            role
-        });
+export async function register(
+  req: Request<{}, {}, { name: string; username: string; password: string; email: string; role: string }>,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    console.log("✅ REGISTER HIT", req.body);
+    const { name, username, password, email, role } = req.body;
 
-        const jwt = sign(user.get({ plain: true }), config.get<string>('app.jwtSecret'));
-        res.json({ jwt, messages: `Welcome ${user.name}!` });
-    } catch (e) {
-        next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
-    }
+    const result = await sequelize.transaction(async (t) => {
+  console.log("➡️ Creating user...");
+
+  const user = await User.create(
+    {
+      name,
+      userName: username,
+      password: hashPassword(password),
+      email,
+      role,
+    },
+    { transaction: t }
+  );
+
+  console.log("✅ User created:", user.id);
+
+  console.log("➡️ Generating account number...");
+  const accountNumber = await generateUniqueAccountNumber();
+  console.log("✅ Account number:", accountNumber);
+
+  console.log("➡️ Creating bank account...");
+  const account = await BankAccount.create(
+    {
+      accountNumber,
+      balance: 0,
+      userId: user.id,
+    },
+    { transaction: t }
+  );
+
+  console.log("✅ Bank account created:", account.id);
+
+  const jwt = sign(user.get({ plain: true }), config.get<string>("app.jwtSecret"));
+
+  return { user, account, jwt };
+});
+
+    res.json({
+      jwt: result.jwt,
+      message: `Welcome ${result.user.name}!`,
+      accountNumber: result.account.accountNumber,
+    });
+  } catch (e: any) {
+    next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+  }
 }
 
 // delete user

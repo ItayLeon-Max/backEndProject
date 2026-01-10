@@ -7,6 +7,7 @@ import notFound from "./middlewares/not-found"
 import cors from 'cors'
 import authRouter from "../src/routers/auth/auth"
 import bankAccountRouter from "../src/routers/bankAccount/bankAccount"
+import transactionsRouter from "../src/routers/transactions/transactions"
 
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
@@ -25,6 +26,7 @@ export async function start() {
     // routers
     app.use('/auth', authRouter)
     app.use('/accounts', bankAccountRouter)
+    app.use('/transactions', transactionsRouter)
     
 
     // special notFound middleware

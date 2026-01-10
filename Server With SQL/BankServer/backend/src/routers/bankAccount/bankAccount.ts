@@ -1,20 +1,9 @@
+import { Router } from "express";
 import { authenticateToken } from "../../middlewares/authMiddleware";
-// import { createAccount, getAccountById, getAllAccounts } from "../../controllers/bankAccount/controller";
-import { Router, Request } from "express";
-
-interface AuthenticatedRequest<Params = {}> extends Request<Params> {
-  user: {
-    id: string;
-    email: string;
-    role: string;
-    [key: string]: any;
-  };
-}
+import { getMyAccount } from "../../controllers/bankAccount/controller";
 
 const bankAccountRouter = Router();
 
-// bankAccountRouter.get("/", getAllAccounts);
-// bankAccountRouter.get("/:id", getAccountById);
-// bankAccountRouter.post("/newAccount", authenticateToken ,createAccount);
+bankAccountRouter.get("/me", authenticateToken, getMyAccount);
 
 export default bankAccountRouter;
