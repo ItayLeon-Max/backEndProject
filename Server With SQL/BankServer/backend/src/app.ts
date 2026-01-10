@@ -8,6 +8,7 @@ import cors from 'cors'
 import authRouter from "../src/routers/auth/auth"
 import bankAccountRouter from "../src/routers/bankAccount/bankAccount"
 import transactionsRouter from "../src/routers/transactions/transactions"
+import loansRouter from "../src/routers/loans/loans"
 
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
@@ -27,6 +28,7 @@ export async function start() {
     app.use('/auth', authRouter)
     app.use('/accounts', bankAccountRouter)
     app.use('/transactions', transactionsRouter)
+    app.use('/loans', loansRouter)
     
 
     // special notFound middleware

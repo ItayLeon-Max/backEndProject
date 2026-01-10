@@ -13,15 +13,12 @@ type Account = {
 type Tx = {
   id: string;
   type: "deposit" | "withdraw" | "transfer";
-  amount: string; // המקורי תמיד חיובי
-  signedAmount: number; // ✅ מהשרת: מינוס/פלוס לפי החשבון שלי
-  direction: "in" | "out"; // ✅ מהשרת
-  counterpartyName?: string | null; // ✅ מהשרת (רק בהעברה)
+  amount: string;
   description?: string | null;
   createdAt: string;
 };
 
-type Action = "history" | "deposit" | "withdraw" | "transfer";
+type Action = "history" | "deposit" | "withdraw" | "transfer" | "loan";
 
 type JwtPayload = {
   id: string;
@@ -58,7 +55,6 @@ function decodeJwtPayload(token: string): JwtPayload | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
-
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const json = decodeURIComponent(
       atob(base64)
@@ -82,6 +78,11 @@ export default function Dashboard() {
   const [amount, setAmount] = useState("");
   const [toAccountNumber, setToAccountNumber] = useState("");
   const [description, setDescription] = useState("");
+
+  // loan fields
+  const [loanPrincipal, setLoanPrincipal] = useState("");
+  const [loanMonths, setLoanMonths] = useState("12");
+  const [loanAnnualRate, setLoanAnnualRate] = useState("8");
 
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -123,10 +124,18 @@ export default function Dashboard() {
     setDescription("");
   }
 
+  function clearLoanForm() {
+    setLoanPrincipal("");
+    setLoanMonths("12");
+    setLoanAnnualRate("8");
+  }
+
   function setTab(tab: Action) {
     setActive(tab);
     setMsg(null);
-    if (tab !== "history") clearForm();
+    if (tab === "loan") clearForm();
+    if (tab !== "loan") clearLoanForm();
+    if (tab !== "history" && tab !== "loan") clearForm();
   }
 
   async function refreshTx() {
@@ -138,7 +147,7 @@ export default function Dashboard() {
     }
   }
 
-  async function submit() {
+  async function submitTx() {
     const n = Number(amount);
     if (!Number.isFinite(n) || n <= 0) {
       setMsg({ kind: "err", text: "סכום חייב להיות מספר חיובי" });
@@ -170,6 +179,41 @@ export default function Dashboard() {
 
       await loadAll();
       clearForm();
+      setActive("history");
+    } catch (e: unknown) {
+      setMsg({ kind: "err", text: extractErrorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitLoan() {
+    const principal = Number(loanPrincipal);
+    const months = Number(loanMonths);
+    const annualRate = Number(loanAnnualRate);
+
+    if (!Number.isFinite(principal) || principal <= 0) {
+      setMsg({ kind: "err", text: "סכום הלוואה חייב להיות חיובי" });
+      return;
+    }
+    if (!Number.isFinite(months) || months < 1 || months > 120) {
+      setMsg({ kind: "err", text: "חודשים חייב להיות 1–120" });
+      return;
+    }
+    if (!Number.isFinite(annualRate) || annualRate < 0 || annualRate > 50) {
+      setMsg({ kind: "err", text: "ריבית שנתית חייבת להיות 0–50" });
+      return;
+    }
+
+    setBusy(true);
+    setMsg(null);
+
+    try {
+      const res = await api.post("/loans/request", { principal, months, annualRate });
+      const monthlyPayment = res.data?.loan?.monthlyPayment;
+      setMsg({ kind: "ok", text: `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}` });
+      await loadAll();
+      clearLoanForm();
       setActive("history");
     } catch (e: unknown) {
       setMsg({ kind: "err", text: extractErrorMessage(e) });
@@ -240,6 +284,9 @@ export default function Dashboard() {
                 <button className={`tabBtn ${active === "transfer" ? "active" : ""}`} onClick={() => setTab("transfer")}>
                   העברה
                 </button>
+                <button className={`tabBtn ${active === "loan" ? "active" : ""}`} onClick={() => setTab("loan")}>
+                  הלוואה
+                </button>
               </div>
 
               <div className="actionPanel">
@@ -257,55 +304,30 @@ export default function Dashboard() {
 
                     {txItems.length ? (
                       <div style={{ display: "grid", gap: 10 }}>
-                        {txItems.map((t) => {
-                          const isOut = t.signedAmount < 0;
-                          const amountText = `${isOut ? "-" : "+"}${formatMoney(Math.abs(t.signedAmount))}`;
-
-                          return (
-                            <div
-                              key={t.id}
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                gap: 12,
-                                padding: 12,
-                                borderRadius: 12,
-                                border: "1px solid rgba(255,255,255,0.12)",
-                                background: "rgba(255,255,255,0.06)",
-                              }}
-                            >
-                              <div>
-                                <div style={{ fontWeight: 800 }}>
-                                  {t.type.toUpperCase()}
-                                </div>
-
-                                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
-                                  {formatDate(t.createdAt)}
-                                  {t.description ? ` • ${t.description}` : ""}
-                                </div>
-
-                                {t.type === "transfer" && t.counterpartyName ? (
-                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
-                                    {t.direction === "out" ? "ל: " : "מ: "}
-                                    {t.counterpartyName}
-                                  </div>
-                                ) : null}
-                              </div>
-
-                              <div
-                                style={{
-                                  fontWeight: 900,
-                                  color: isOut ? "#ef4444" : "#22c55e",
-                                  minWidth: 140,
-                                  textAlign: "left",
-                                }}
-                              >
-                                {amountText}
+                        {txItems.map((t) => (
+                          <div
+                            key={t.id}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: 12,
+                              borderRadius: 12,
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              background: "rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 800 }}>{t.type.toUpperCase()}</div>
+                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
+                                {formatDate(t.createdAt)}
+                                {t.description ? ` • ${t.description}` : ""}
                               </div>
                             </div>
-                          );
-                        })}
+                            <div style={{ fontWeight: 800 }}>{formatMoney(t.amount)}</div>
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <div className="hint">אין תנועות עדיין.</div>
@@ -345,10 +367,50 @@ export default function Dashboard() {
                     />
 
                     <div className="actionRow">
-                      <button className="btnPrimary" onClick={submit} disabled={busy}>
+                      <button className="btnPrimary" onClick={submitTx} disabled={busy}>
                         {busy ? "מבצע..." : "בצע"}
                       </button>
                       <button className="btnGhostSmall" onClick={clearForm} disabled={busy} type="button">
+                        ניקוי
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {active === "loan" && (
+                  <>
+                    <div className="label">סכום הלוואה</div>
+                    <input
+                      className="input"
+                      value={loanPrincipal}
+                      onChange={(e) => setLoanPrincipal(e.target.value)}
+                      placeholder="למשל: 5000"
+                      inputMode="decimal"
+                    />
+
+                    <div className="label">חודשים</div>
+                    <input
+                      className="input"
+                      value={loanMonths}
+                      onChange={(e) => setLoanMonths(e.target.value)}
+                      placeholder="למשל: 12"
+                      inputMode="numeric"
+                    />
+
+                    <div className="label">ריבית שנתית (%)</div>
+                    <input
+                      className="input"
+                      value={loanAnnualRate}
+                      onChange={(e) => setLoanAnnualRate(e.target.value)}
+                      placeholder="למשל: 8"
+                      inputMode="decimal"
+                    />
+
+                    <div className="actionRow">
+                      <button className="btnPrimary" onClick={submitLoan} disabled={busy}>
+                        {busy ? "מבצע..." : "בקש הלוואה"}
+                      </button>
+                      <button className="btnGhostSmall" onClick={clearLoanForm} disabled={busy} type="button">
                         ניקוי
                       </button>
                     </div>
