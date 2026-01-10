@@ -1,36 +1,44 @@
 import {
   AllowNull,
-  BelongsTo,
   Column,
   DataType,
   Default,
-  ForeignKey,
   Model,
   PrimaryKey,
   Table,
+  Unique,
 } from "sequelize-typescript";
-import User from "./user";
 
 @Table({
-  tableName: "bank_accounts",
+  tableName: "users",
   underscored: true,
 })
-export default class BankAccount extends Model {
+export default class User extends Model {
   @PrimaryKey
   @Default(DataType.UUIDV4)
   @Column(DataType.UUID)
-  id: string;
+  declare id: string;
 
   @AllowNull(false)
-  @Default(0)
-  @Column(DataType.FLOAT)
-  balance: number;
+  @Column(DataType.STRING(80))
+  declare name: string;
 
-  @ForeignKey(() => User)
   @AllowNull(false)
-  @Column(DataType.UUID)
-  userId: string;
+  @Unique
+  @Column(DataType.STRING(40))
+  declare userName: string;
 
-  @BelongsTo(() => User)
-  user: User;
+  @AllowNull(false)
+  @Column(DataType.STRING(200))
+  declare password: string;
+
+  @AllowNull(false)
+  @Unique
+  @Column(DataType.STRING(120))
+  declare email: string;
+
+  @AllowNull(false)
+  @Default("user")
+  @Column(DataType.STRING(20))
+  declare role: string;
 }

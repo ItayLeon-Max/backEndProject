@@ -1,5 +1,5 @@
 import { authenticateToken } from "../../middlewares/authMiddleware";
-import { createAccount, getAccountById, getAllAccounts } from "../../controllers/bankAccount/controller";
+// import { createAccount, getAccountById, getAllAccounts } from "../../controllers/bankAccount/controller";
 import { Router, Request } from "express";
 
 interface AuthenticatedRequest<Params = {}> extends Request<Params> {
@@ -13,8 +13,8 @@ interface AuthenticatedRequest<Params = {}> extends Request<Params> {
 
 const bankAccountRouter = Router();
 
-bankAccountRouter.get("/", getAllAccounts);
-bankAccountRouter.get("/:id", getAccountById);
-bankAccountRouter.post("/newAccount", authenticateToken ,createAccount);
+// bankAccountRouter.get("/", getAllAccounts);
+// bankAccountRouter.get("/:id", getAccountById);
+// bankAccountRouter.post("/newAccount", authenticateToken ,createAccount);
 
 export default bankAccountRouter;

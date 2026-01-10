@@ -124,19 +124,19 @@ export async function logout(req: Request<{ id: string }>, res: Response, next: 
         const user = await User.findByPk(userId);
         if (!user) return next(new AppError(StatusCodes.NOT_FOUND, 'User not found'));
 
-        socket.emit("user:login", {
-            id: user.id,
-            name: user.name,
-            username: user.userName,
-            time: new Date().toISOString(),
-          });
-          
-          socket.emit("user:online", {
-            id: user.id,
-            name: user.name,
-            username: user.userName,
-            time: new Date().toISOString(),
-          });
+        socket.emit("user:logout", {
+        id: user.id,
+        name: user.name,
+        username: user.userName,
+        time: new Date().toISOString(),
+        });
+
+        socket.emit("user:offline", {
+        id: user.id,
+        name: user.name,
+        username: user.userName,
+        time: new Date().toISOString(),
+        });
 
         res.json({ message: `User ${user.name} logged out` });
     } catch (e: any) {
