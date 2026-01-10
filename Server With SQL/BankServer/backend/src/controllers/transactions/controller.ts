@@ -5,6 +5,7 @@ import { transferMoney, depositMoney, withdrawMoney } from "../../services/trans
 import Transaction, { TransactionType } from "../../models/transaction";
 import BankAccount from "../../models/bankAccount";
 import { Op } from "sequelize";
+import User from "../../models/user";
 
 // ממשק לבקשה מאומתת
 interface AuthenticatedRequest extends Request {
@@ -91,13 +92,13 @@ export async function getMyTransactions(req: AuthenticatedRequest, res: Response
     const limit = Math.min(50, Math.max(1, Number(req.query.limit ?? 20)));
     const offset = (page - 1) * limit;
 
-    const type = req.query.type as string | undefined;
+    const type = typeof req.query.type === "string" ? req.query.type : undefined;
 
-    const account = await BankAccount.findOne({ where: { userId } });
-    if (!account) return next(new AppError(StatusCodes.NOT_FOUND, "Bank account not found"));
+    const myAccount = await BankAccount.findOne({ where: { userId } });
+    if (!myAccount) return next(new AppError(StatusCodes.NOT_FOUND, "Bank account not found"));
 
     const where: any = {
-      [Op.or]: [{ fromAccountId: account.id }, { toAccountId: account.id }],
+      [Op.or]: [{ fromAccountId: myAccount.id }, { toAccountId: myAccount.id }],
     };
 
     if (type) where.type = type;
@@ -107,13 +108,73 @@ export async function getMyTransactions(req: AuthenticatedRequest, res: Response
       order: [["createdAt", "DESC"]],
       limit,
       offset,
+      include: [
+        {
+          model: BankAccount,
+          as: "fromAccount",
+          attributes: ["id", "accountNumber", "userId"],
+          include: [{ model: User, attributes: ["id", "name"] }],
+        },
+        {
+          model: BankAccount,
+          as: "toAccount",
+          attributes: ["id", "accountNumber", "userId"],
+          include: [{ model: User, attributes: ["id", "name"] }],
+        },
+      ],
+    });
+
+    const items = rows.map((tx: any) => {
+      const baseAmount = Number(tx.amount);
+
+      // signed amount + direction
+      let signedAmount = baseAmount;
+      let direction: "in" | "out" = "in";
+      let counterpartyName: string | null = null;
+
+      if (tx.type === TransactionType.DEPOSIT) {
+        signedAmount = +baseAmount;
+        direction = "in";
+      }
+
+      if (tx.type === TransactionType.WITHDRAW) {
+        signedAmount = -baseAmount;
+        direction = "out";
+      }
+
+      if (tx.type === TransactionType.TRANSFER) {
+        // אם אני המקור => מינוס
+        if (tx.fromAccountId === myAccount.id) {
+          signedAmount = -baseAmount;
+          direction = "out";
+          counterpartyName = tx.toAccount?.user?.name ?? null;
+        }
+
+        // אם אני היעד => פלוס
+        if (tx.toAccountId === myAccount.id) {
+          signedAmount = +baseAmount;
+          direction = "in";
+          counterpartyName = tx.fromAccount?.user?.name ?? null;
+        }
+      }
+
+      return {
+        id: tx.id,
+        type: tx.type,
+        amount: tx.amount, 
+        signedAmount,     
+        direction,    
+        counterpartyName,   
+        description: tx.description,
+        createdAt: tx.createdAt,
+      };
     });
 
     res.json({
       page,
       limit,
       total: count,
-      items: rows,
+      items,
     });
   } catch (e) {
     next(e);

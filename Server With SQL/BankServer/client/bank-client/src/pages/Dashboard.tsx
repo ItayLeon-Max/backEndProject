@@ -13,7 +13,10 @@ type Account = {
 type Tx = {
   id: string;
   type: "deposit" | "withdraw" | "transfer";
-  amount: string;
+  amount: string; // המקורי תמיד חיובי
+  signedAmount: number; // ✅ מהשרת: מינוס/פלוס לפי החשבון שלי
+  direction: "in" | "out"; // ✅ מהשרת
+  counterpartyName?: string | null; // ✅ מהשרת (רק בהעברה)
   description?: string | null;
   createdAt: string;
 };
@@ -224,7 +227,6 @@ export default function Dashboard() {
                 <div className="v big">{formatMoney(account.balance)}</div>
               </div>
 
-              {/* menu buttons */}
               <div className="actionMenu">
                 <button className={`tabBtn ${active === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
                   תנועות
@@ -240,7 +242,6 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* content */}
               <div className="actionPanel">
                 {msg && <div className={`toast ${msg.kind === "ok" ? "ok" : "err"}`}>{msg.text}</div>}
 
@@ -256,30 +257,55 @@ export default function Dashboard() {
 
                     {txItems.length ? (
                       <div style={{ display: "grid", gap: 10 }}>
-                        {txItems.map((t) => (
-                          <div
-                            key={t.id}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: 12,
-                              padding: 12,
-                              borderRadius: 12,
-                              border: "1px solid rgba(255,255,255,0.12)",
-                              background: "rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontWeight: 800 }}>{t.type.toUpperCase()}</div>
-                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
-                                {formatDate(t.createdAt)}
-                                {t.description ? ` • ${t.description}` : ""}
+                        {txItems.map((t) => {
+                          const isOut = t.signedAmount < 0;
+                          const amountText = `${isOut ? "-" : "+"}${formatMoney(Math.abs(t.signedAmount))}`;
+
+                          return (
+                            <div
+                              key={t.id}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 12,
+                                padding: 12,
+                                borderRadius: 12,
+                                border: "1px solid rgba(255,255,255,0.12)",
+                                background: "rgba(255,255,255,0.06)",
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: 800 }}>
+                                  {t.type.toUpperCase()}
+                                </div>
+
+                                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
+                                  {formatDate(t.createdAt)}
+                                  {t.description ? ` • ${t.description}` : ""}
+                                </div>
+
+                                {t.type === "transfer" && t.counterpartyName ? (
+                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
+                                    {t.direction === "out" ? "ל: " : "מ: "}
+                                    {t.counterpartyName}
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div
+                                style={{
+                                  fontWeight: 900,
+                                  color: isOut ? "#ef4444" : "#22c55e",
+                                  minWidth: 140,
+                                  textAlign: "left",
+                                }}
+                              >
+                                {amountText}
                               </div>
                             </div>
-                            <div style={{ fontWeight: 800 }}>{formatMoney(t.amount)}</div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="hint">אין תנועות עדיין.</div>

@@ -1,27 +1,62 @@
-import "./Login.css";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { api } from "../api";
-import "./Login.css";
+
+type Mode = "login" | "register";
 
 function extractErrorMessage(e: unknown): string {
-  if (!axios.isAxiosError(e)) return "Login failed";
+  if (!axios.isAxiosError(e)) return "Request failed";
   const d = e.response?.data;
+
+  // server message
   if (d && typeof d === "object" && "message" in d) {
     const m = (d as { message?: unknown }).message;
     if (typeof m === "string") return m;
   }
-  return e.message || "Login failed";
+
+  // validation errors
+  if (d && typeof d === "object" && "errors" in d) {
+    try {
+      return JSON.stringify((d as { errors?: unknown }).errors);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return `Request failed (${e.response?.status ?? "?"})`;
 }
 
 export default function Login() {
   const nav = useNavigate();
 
+  const [mode, setMode] = useState<Mode>("login");
+  const title = useMemo(() => (mode === "login" ? "Login" : "Register"), [mode]);
+  const subtitle = useMemo(
+    () => (mode === "login" ? "Sign in to your account" : "Create your bank user"),
+    [mode]
+  );
+
+  // register fields
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+
+  // shared fields
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setErr(null);
+    // optional: clear fields on switch
+    setName("");
+    setEmail("");
+    setUsername("");
+    setPassword("");
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,7 +64,39 @@ export default function Login() {
     setBusy(true);
 
     try {
-      const res = await api.post("/auth/login", { username, password });
+      if (mode === "login") {
+        if (!username.trim() || !password.trim()) {
+          setErr("חסר שם משתמש או סיסמה");
+          return;
+        }
+
+        const res = await api.post("/auth/login", {
+          username: username.trim(),
+          password,
+        });
+
+        const jwt = res.data.jwt as string;
+        localStorage.setItem("jwt", jwt);
+        nav("/dashboard");
+        return;
+      }
+
+      // register
+      if (!name.trim() || !username.trim() || !email.trim() || !password.trim()) {
+        setErr("חסרים פרטים להרשמה");
+        return;
+      }
+
+      const res = await api.post("/auth/register", {
+        name: name.trim(),
+        username: username.trim(),
+        email: email.trim(),
+        password,
+        // ✅ לא חייב role (יש default בשרת)
+        // אם אתה רוצה כן לשלוח:
+        // role: "user",
+      });
+
       const jwt = res.data.jwt as string;
       localStorage.setItem("jwt", jwt);
       nav("/dashboard");
@@ -41,43 +108,89 @@ export default function Login() {
   }
 
   return (
-    <div className="login">
-      <div className="loginCard">
-        <div className="loginHeader">
-          <div className="loginLogo">🏦</div>
+    <div className="bg">
+      <div className="orb orbA" />
+      <div className="orb orbB" />
+      <div className="orb orbC" />
+
+      <div className="shell">
+        <div className="brand" style={{ justifyContent: "center" }}>
+          <div className="logo">🏦</div>
           <div>
-            <h2 className="loginTitle">Sign in</h2>
-            <p className="loginSub">Use your bank username and password.</p>
+            <div className="brandTitle">Bank Client</div>
+            <div className="brandSub">{subtitle}</div>
           </div>
         </div>
 
-        <form onSubmit={submit}>
-          <label className="loginLabel">Username</label>
-          <input
-            className="loginInput"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="e.g. itay1"
-            autoComplete="username"
-          />
+        <div className="cardPro">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+            <h1 className="title" style={{ margin: 0 }}>
+              {title}
+            </h1>
 
-          <label className="loginLabel">Password</label>
-          <input
-            className="loginInput"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
+            <button
+              type="button"
+              className="btnGhost"
+              onClick={() => switchMode(mode === "login" ? "register" : "login")}
+              style={{ padding: "8px 10px" }}
+              disabled={busy}
+            >
+              {mode === "login" ? "Create account" : "I have an account"}
+            </button>
+          </div>
 
-          <button className="loginBtn" disabled={busy}>
-            {busy ? "Signing in..." : "Sign in"}
-          </button>
+          <form className="form" onSubmit={submit}>
+            {mode === "register" && (
+              <>
+                <div className="label">Full name</div>
+                <input
+                  className="input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Itay Leon"
+                  autoComplete="name"
+                />
 
-          {err && <div className="loginError">{err}</div>}
+                <div className="label">Email</div>
+                <input
+                  className="input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. itay@example.com"
+                  autoComplete="email"
+                  inputMode="email"
+                />
+              </>
+            )}
 
-          <div className="loginFooter">© 2026 Bank Client</div>
-        </form>
+            <div className="label">Username</div>
+            <input
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. itay1"
+              autoComplete="username"
+            />
+
+            <div className="label">Password</div>
+            <input
+              className="input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+            />
+
+            <button className="btnPrimary" disabled={busy}>
+              {busy ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
+            </button>
+
+            {err && <div className="alert">{err}</div>}
+
+            <div className="footerNote">© 2026 Bank Client</div>
+          </form>
+        </div>
       </div>
     </div>
   );
