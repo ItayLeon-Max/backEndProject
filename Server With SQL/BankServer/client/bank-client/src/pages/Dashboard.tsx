@@ -128,6 +128,12 @@ export default function Dashboard() {
   const token = localStorage.getItem("jwt") ?? "";
   const me = useMemo(() => (token ? decodeJwtPayload(token) : null), [token]);
 
+  // ✅ הרשאת admin גם אם מגיע "Admin" וגם אם מגיע "admin"
+  const isAdmin = useMemo(() => {
+    const r = (me?.role ?? "").toLowerCase();
+    return r === "admin";
+  }, [me?.role]);
+
   async function loadAll() {
     setLoading(true);
     try {
@@ -158,6 +164,11 @@ export default function Dashboard() {
 
   function goSettings() {
     nav("/settings");
+  }
+
+  // ✅ מעבר למסך מנהל
+  function goAdmin() {
+    nav("/admin");
   }
 
   function clearForm() {
@@ -286,6 +297,13 @@ export default function Dashboard() {
           </div>
 
           <div style={{ display: "flex", gap: 10 }}>
+            {/* ✅ רק admin רואה */}
+            {isAdmin && (
+              <button className="btnGhost" onClick={goAdmin} type="button">
+                Admin
+              </button>
+            )}
+
             <button className="btnGhost" onClick={goSettings} type="button">
               Settings
             </button>

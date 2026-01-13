@@ -1,14 +1,20 @@
-// src/routers/admin/admin.ts
 import { Router } from "express";
 import { authenticateToken } from "../../middlewares/authMiddleware";
 import { requireAdmin } from "../../middlewares/requireRole";
-import { deleteUser, getAllUsers, updateUserRole } from "../../controllers/admin/controller";
+
+import { getAdmins, getUsers, updateUserRole, deleteUser } from "../../controllers/admin/controller";
 
 const adminRouter = Router();
 
 adminRouter.use(authenticateToken, requireAdmin);
 
-adminRouter.get("/users", getAllUsers);
+// טבלה נפרדת למנהלים
+adminRouter.get("/admins", getAdmins);
+
+// טבלה נפרדת למשתמשים רגילים
+adminRouter.get("/users", getUsers);
+
+// מה שכבר יש לך:
 adminRouter.patch("/users/:id/role", updateUserRole);
 adminRouter.delete("/users/:id", deleteUser);
 
