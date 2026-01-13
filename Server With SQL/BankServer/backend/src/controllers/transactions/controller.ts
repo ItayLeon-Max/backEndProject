@@ -9,7 +9,25 @@ import User from "../../models/user";
 
 // ממשק לבקשה מאומתת
 interface AuthenticatedRequest extends Request {
-  user: { id: string; email: string; role: string; [key: string]: any };
+  user: { id: string; email: string; role: string; [key: string]: unknown };
+}
+
+type Direction = "in" | "out";
+
+type TxResponseItem = {
+  id: string;
+  type: TransactionType;
+  amount: string; // המקורי מהDB
+  signedAmount: number; // +/- לפי כיוון
+  direction: Direction;
+  counterpartyName: string | null;
+  description: string | null;
+  createdAt: Date;
+};
+
+function toNumberSafe(v: unknown): number {
+  const n = typeof v === "string" || typeof v === "number" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : 0;
 }
 
 // העברת כסף בין חשבונות
@@ -97,7 +115,7 @@ export async function getMyTransactions(req: AuthenticatedRequest, res: Response
     const myAccount = await BankAccount.findOne({ where: { userId } });
     if (!myAccount) return next(new AppError(StatusCodes.NOT_FOUND, "Bank account not found"));
 
-    const where: any = {
+    const where: Record<string, unknown> = {
       [Op.or]: [{ fromAccountId: myAccount.id }, { toAccountId: myAccount.id }],
     };
 
@@ -113,36 +131,31 @@ export async function getMyTransactions(req: AuthenticatedRequest, res: Response
           model: BankAccount,
           as: "fromAccount",
           attributes: ["id", "accountNumber", "userId"],
-          include: [{ model: User, attributes: ["id", "name"] }],
+          include: [{ model: User, as: "user", attributes: ["id", "name"] }],
         },
         {
           model: BankAccount,
           as: "toAccount",
           attributes: ["id", "accountNumber", "userId"],
-          include: [{ model: User, attributes: ["id", "name"] }],
+          include: [{ model: User, as: "user", attributes: ["id", "name"] }],
         },
       ],
     });
 
-    const items = rows.map((tx: any) => {
-      const baseAmount = Number(tx.amount);
+    const items: TxResponseItem[] = rows.map((tx) => {
+      const baseAmount = toNumberSafe(tx.amount);
 
-      // signed amount + direction
       let signedAmount = baseAmount;
-      let direction: "in" | "out" = "in";
+      let direction: Direction = "in";
       let counterpartyName: string | null = null;
 
       if (tx.type === TransactionType.DEPOSIT) {
         signedAmount = +baseAmount;
         direction = "in";
-      }
-
-      if (tx.type === TransactionType.WITHDRAW) {
+      } else if (tx.type === TransactionType.WITHDRAW) {
         signedAmount = -baseAmount;
         direction = "out";
-      }
-
-      if (tx.type === TransactionType.TRANSFER) {
+      } else if (tx.type === TransactionType.TRANSFER) {
         // אם אני המקור => מינוס
         if (tx.fromAccountId === myAccount.id) {
           signedAmount = -baseAmount;
@@ -161,11 +174,11 @@ export async function getMyTransactions(req: AuthenticatedRequest, res: Response
       return {
         id: tx.id,
         type: tx.type,
-        amount: tx.amount, 
-        signedAmount,     
-        direction,    
-        counterpartyName,   
-        description: tx.description,
+        amount: tx.amount,
+        signedAmount,
+        direction,
+        counterpartyName,
+        description: tx.description ?? null,
         createdAt: tx.createdAt,
       };
     });

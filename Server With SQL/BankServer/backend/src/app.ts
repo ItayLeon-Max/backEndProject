@@ -9,6 +9,7 @@ import authRouter from "../src/routers/auth/auth"
 import bankAccountRouter from "../src/routers/bankAccount/bankAccount"
 import transactionsRouter from "../src/routers/transactions/transactions"
 import loansRouter from "../src/routers/loans/loans"
+import usersRouter from "../src/routers/users/users"
 
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
@@ -29,6 +30,7 @@ export async function start() {
     app.use('/accounts', bankAccountRouter)
     app.use('/transactions', transactionsRouter)
     app.use('/loans', loansRouter)
+    app.use("/users", usersRouter);
     
 
     // special notFound middleware

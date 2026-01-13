@@ -7,24 +7,24 @@ type Mode = "login" | "register";
 
 function extractErrorMessage(e: unknown): string {
   if (!axios.isAxiosError(e)) return "Request failed";
-  const d = e.response?.data;
 
-  // server message
-  if (d && typeof d === "object" && "message" in d) {
-    const m = (d as { message?: unknown }).message;
-    if (typeof m === "string") return m;
+  const status = e.response?.status;
+  const data = e.response?.data;
+
+  if (status === 401) return "שם משתמש או סיסמה לא נכונים";
+  if (status === 404) return "הנתיב לא נמצא";
+  if (status === 500) return "שגיאת שרת, נסה שוב מאוחר יותר";
+
+  if (
+    data &&
+    typeof data === "object" &&
+    "message" in data &&
+    typeof (data as { message: unknown }).message === "string"
+  ) {
+    return (data as { message: string }).message;
   }
 
-  // validation errors
-  if (d && typeof d === "object" && "errors" in d) {
-    try {
-      return JSON.stringify((d as { errors?: unknown }).errors);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return `Request failed (${e.response?.status ?? "?"})`;
+  return `Request failed (${status ?? "?"})`;
 }
 
 export default function Login() {

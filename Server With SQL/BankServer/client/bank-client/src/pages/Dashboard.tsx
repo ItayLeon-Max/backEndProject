@@ -16,6 +16,12 @@ type Tx = {
   amount: string;
   description?: string | null;
   createdAt: string;
+
+  signedAmount?: number;
+  direction?: "in" | "out";
+
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
 };
 
 type Action = "history" | "deposit" | "withdraw" | "transfer" | "loan";
@@ -40,16 +46,6 @@ function formatDate(iso: string) {
     return iso;
   }
 }
-
-// function extractErrorMessage(e: unknown): string {
-//   if (!axios.isAxiosError(e)) return "Request failed";
-//   const data = e.response?.data;
-//   if (data && typeof data === "object" && "message" in data) {
-//     const msg = (data as { message?: unknown }).message;
-//     if (typeof msg === "string") return msg;
-//   }
-//   return e.message || "Request failed";
-// }
 
 function extractErrorMessage(e: unknown): string {
   if (!axios.isAxiosError(e)) return "Request failed";
@@ -76,6 +72,7 @@ function decodeJwtPayload(token: string): JwtPayload | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
+
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const json = decodeURIComponent(
       atob(base64)
@@ -83,10 +80,30 @@ function decodeJwtPayload(token: string): JwtPayload | null {
         .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
         .join("")
     );
+
     return JSON.parse(json) as JwtPayload;
   } catch {
     return null;
   }
+}
+
+function getSignedAmount(tx: Tx, myAccountId: string | null): number {
+  if (typeof tx.signedAmount === "number" && Number.isFinite(tx.signedAmount)) return tx.signedAmount;
+
+  const base = Number(tx.amount);
+  if (!Number.isFinite(base)) return 0;
+
+  if (!myAccountId) return base;
+
+  if (tx.type === "deposit") return +base;
+  if (tx.type === "withdraw") return -base;
+
+  if (tx.type === "transfer") {
+    if (tx.fromAccountId && tx.fromAccountId === myAccountId) return -base;
+    if (tx.toAccountId && tx.toAccountId === myAccountId) return +base;
+  }
+
+  return base;
 }
 
 export default function Dashboard() {
@@ -100,7 +117,6 @@ export default function Dashboard() {
   const [toAccountNumber, setToAccountNumber] = useState("");
   const [description, setDescription] = useState("");
 
-  // loan fields
   const [loanPrincipal, setLoanPrincipal] = useState("");
   const [loanMonths, setLoanMonths] = useState("12");
   const [loanAnnualRate, setLoanAnnualRate] = useState("8");
@@ -119,6 +135,7 @@ export default function Dashboard() {
         api.get("/accounts/me"),
         api.get("/transactions/me", { params: { page: 1, limit: 8 } }),
       ]);
+
       setAccount(accRes.data);
       setTxItems(txRes.data?.items ?? []);
     } catch {
@@ -139,6 +156,10 @@ export default function Dashboard() {
     nav("/");
   }
 
+  function goSettings() {
+    nav("/settings");
+  }
+
   function clearForm() {
     setAmount("");
     setToAccountNumber("");
@@ -154,6 +175,7 @@ export default function Dashboard() {
   function setTab(tab: Action) {
     setActive(tab);
     setMsg(null);
+
     if (tab === "loan") clearForm();
     if (tab !== "loan") clearLoanForm();
     if (tab !== "history" && tab !== "loan") clearForm();
@@ -170,10 +192,12 @@ export default function Dashboard() {
 
   async function submitTx() {
     const n = Number(amount);
+
     if (!Number.isFinite(n) || n <= 0) {
       setMsg({ kind: "err", text: "סכום חייב להיות מספר חיובי" });
       return;
     }
+
     if (active === "transfer" && !toAccountNumber.trim()) {
       setMsg({ kind: "err", text: "חסר מספר חשבון יעד" });
       return;
@@ -232,7 +256,9 @@ export default function Dashboard() {
     try {
       const res = await api.post("/loans/request", { principal, months, annualRate });
       const monthlyPayment = res.data?.loan?.monthlyPayment;
+
       setMsg({ kind: "ok", text: `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}` });
+
       await loadAll();
       clearLoanForm();
       setActive("history");
@@ -259,9 +285,14 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <button className="btnGhost" onClick={logout}>
-            Logout
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btnGhost" onClick={goSettings} type="button">
+              Settings
+            </button>
+            <button className="btnGhost" onClick={logout} type="button">
+              Logout
+            </button>
+          </div>
         </div>
 
         <div className="cardPro">
@@ -293,19 +324,19 @@ export default function Dashboard() {
               </div>
 
               <div className="actionMenu">
-                <button className={`tabBtn ${active === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
+                <button className={`tabBtn ${active === "history" ? "active" : ""}`} onClick={() => setTab("history")} type="button">
                   תנועות
                 </button>
-                <button className={`tabBtn ${active === "deposit" ? "active" : ""}`} onClick={() => setTab("deposit")}>
+                <button className={`tabBtn ${active === "deposit" ? "active" : ""}`} onClick={() => setTab("deposit")} type="button">
                   הפקדה
                 </button>
-                <button className={`tabBtn ${active === "withdraw" ? "active" : ""}`} onClick={() => setTab("withdraw")}>
+                <button className={`tabBtn ${active === "withdraw" ? "active" : ""}`} onClick={() => setTab("withdraw")} type="button">
                   משיכה
                 </button>
-                <button className={`tabBtn ${active === "transfer" ? "active" : ""}`} onClick={() => setTab("transfer")}>
+                <button className={`tabBtn ${active === "transfer" ? "active" : ""}`} onClick={() => setTab("transfer")} type="button">
                   העברה
                 </button>
-                <button className={`tabBtn ${active === "loan" ? "active" : ""}`} onClick={() => setTab("loan")}>
+                <button className={`tabBtn ${active === "loan" ? "active" : ""}`} onClick={() => setTab("loan")} type="button">
                   הלוואה
                 </button>
               </div>
@@ -316,7 +347,7 @@ export default function Dashboard() {
                 {active === "history" && (
                   <>
                     <div className="actionRow">
-                      <button className="btnGhostSmall" onClick={refreshTx}>
+                      <button className="btnGhostSmall" onClick={refreshTx} type="button">
                         רענון תנועות
                       </button>
                     </div>
@@ -325,30 +356,39 @@ export default function Dashboard() {
 
                     {txItems.length ? (
                       <div style={{ display: "grid", gap: 10 }}>
-                        {txItems.map((t) => (
-                          <div
-                            key={t.id}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: 12,
-                              padding: 12,
-                              borderRadius: 12,
-                              border: "1px solid rgba(255,255,255,0.12)",
-                              background: "rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontWeight: 800 }}>{t.type.toUpperCase()}</div>
-                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
-                                {formatDate(t.createdAt)}
-                                {t.description ? ` • ${t.description}` : ""}
+                        {txItems.map((t) => {
+                          const signed = getSignedAmount(t, account?.id ?? null);
+                          const sign = signed >= 0 ? "+" : "−";
+
+                          return (
+                            <div
+                              key={t.id}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 12,
+                                padding: 12,
+                                borderRadius: 12,
+                                border: "1px solid rgba(255,255,255,0.12)",
+                                background: "rgba(255,255,255,0.06)",
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: 800 }}>{t.type.toUpperCase()}</div>
+                                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
+                                  {formatDate(t.createdAt)}
+                                  {t.description ? ` • ${t.description}` : ""}
+                                </div>
+                              </div>
+
+                              <div style={{ fontWeight: 900 }}>
+                                {sign}
+                                {formatMoney(Math.abs(signed))}
                               </div>
                             </div>
-                            <div style={{ fontWeight: 800 }}>{formatMoney(t.amount)}</div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="hint">אין תנועות עדיין.</div>
@@ -388,7 +428,7 @@ export default function Dashboard() {
                     />
 
                     <div className="actionRow">
-                      <button className="btnPrimary" onClick={submitTx} disabled={busy}>
+                      <button className="btnPrimary" onClick={submitTx} disabled={busy} type="button">
                         {busy ? "מבצע..." : "בצע"}
                       </button>
                       <button className="btnGhostSmall" onClick={clearForm} disabled={busy} type="button">
@@ -428,7 +468,7 @@ export default function Dashboard() {
                     />
 
                     <div className="actionRow">
-                      <button className="btnPrimary" onClick={submitLoan} disabled={busy}>
+                      <button className="btnPrimary" onClick={submitLoan} disabled={busy} type="button">
                         {busy ? "מבצע..." : "בקש הלוואה"}
                       </button>
                       <button className="btnGhostSmall" onClick={clearLoanForm} disabled={busy} type="button">

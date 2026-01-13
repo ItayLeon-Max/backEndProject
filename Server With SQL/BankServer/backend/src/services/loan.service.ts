@@ -49,8 +49,9 @@ export async function requestLoan(input: LoanRequestInput) {
         termMonths: months,
         monthlyPayment: monthlyPayment.toFixed(2),
         remainingPrincipal: principal.toFixed(2),
-        status: LoanStatus.ACTIVE,
+        status: "active",
         startDate: new Date(),
+        note: null,
       } as any,
       { transaction: t }
     );

@@ -20,5 +20,13 @@
     },
     "io": {
         "url": "ws://127.0.0.1:3003"
-    }
+    },
+    "mail": {
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "secure": false,
+    "user": "YOUR_GMAIL@gmail.com",
+    "pass": "YOUR_APP_PASSWORD",
+    "from": "Bank Client <YOUR_GMAIL@gmail.com>"
+  }
 }

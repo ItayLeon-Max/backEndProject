@@ -1,29 +1,41 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import config from "config";
+import AppError from "../errors/app-error";
+import { StatusCodes } from "http-status-codes";
 
-interface AuthenticatedRequest extends Request {
-  user?: any;
-}
+type UserPayload = {
+  id: string;
+  email?: string;
+  role?: string;
+  [key: string]: any;
+};
 
-export const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
+type AuthedRequest = Request & { user?: UserPayload };
+
+export function authenticateToken(req: AuthedRequest, _res: Response, next: NextFunction) {
   const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
+  const token = authHeader?.split(" ")[1];
 
   if (!token) {
-    res.status(401).json({ message: "Access token missing" });
-    return;
+    return next(new AppError(StatusCodes.UNAUTHORIZED, "Missing token"));
   }
 
-  const secret = config.get<string>("app.jwtSecret"); 
+  try {
+    const decoded = jwt.verify(token, config.get<string>("app.jwtSecret")) as UserPayload;
 
-  jwt.verify(token, secret, (err, decoded) => {
-    if (err || !decoded) {
-      res.status(403).json({ message: "Invalid or expired token" });
-      return;
+    if (!decoded?.id) {
+      return next(new AppError(StatusCodes.UNAUTHORIZED, "Invalid token payload"));
     }
 
-    (req as AuthenticatedRequest).user = decoded;
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role,
+    };
+
     next();
-  });
-};
+  } catch {
+    next(new AppError(StatusCodes.UNAUTHORIZED, "Invalid token"));
+  }
+}

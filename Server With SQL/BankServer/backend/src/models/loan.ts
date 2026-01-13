@@ -25,15 +25,16 @@ export enum LoanStatus {
 })
 export default class Loan extends Model {
   @PrimaryKey
+  @Default(DataType.UUIDV4)
   @Column(DataType.UUID)
   declare id: string;
 
   @ForeignKey(() => BankAccount)
   @AllowNull(false)
-  @Column(DataType.UUID)
+  @Column({ type: DataType.UUID, field: "account_id" })
   declare accountId: string;
 
-  @BelongsTo(() => BankAccount)
+  @BelongsTo(() => BankAccount, "accountId")
   declare account?: BankAccount;
 
   @AllowNull(false)
@@ -41,31 +42,31 @@ export default class Loan extends Model {
   declare principal: string;
 
   @AllowNull(false)
-  @Column(DataType.DECIMAL(6, 3))
+  @Column({ type: DataType.DECIMAL(6, 3), field: "annual_interest_rate" })
   declare annualInterestRate: string;
 
   @AllowNull(false)
-  @Column(DataType.INTEGER)
+  @Column({ type: DataType.INTEGER, field: "term_months" })
   declare termMonths: number;
 
   @AllowNull(false)
-  @Column(DataType.DECIMAL(14, 2))
+  @Column({ type: DataType.DECIMAL(14, 2), field: "monthly_payment" })
   declare monthlyPayment: string;
-
-  @AllowNull(false)
-  @Column(DataType.DECIMAL(14, 2))
-  declare remainingPrincipal: string;
 
   @AllowNull(false)
   @Default(LoanStatus.PENDING)
   @Column(DataType.ENUM(...Object.values(LoanStatus)))
   declare status: LoanStatus;
 
-  @AllowNull(true)
-  @Column(DataType.DATE)
-  declare startDate?: Date;
+  @AllowNull(false)
+  @Column({ type: DataType.DECIMAL(14, 2), field: "remaining_principal" })
+  declare remainingPrincipal: string;
 
   @AllowNull(true)
-  @Column(DataType.STRING)
-  declare note?: string;
+  @Column({ type: DataType.DATE, field: "start_date" })
+  declare startDate?: Date | null;
+
+  @AllowNull(true)
+  @Column({ type: DataType.STRING(255), field: "note" })
+  declare note?: string | null;
 }
