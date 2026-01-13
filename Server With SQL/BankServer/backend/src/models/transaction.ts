@@ -1,21 +1,12 @@
 import {
   AllowNull,
-  BelongsTo,
   Column,
   DataType,
   Default,
-  ForeignKey,
   Model,
   PrimaryKey,
   Table,
 } from "sequelize-typescript";
-import BankAccount from "./bankAccount";
-
-export enum TransactionType {
-  TRANSFER = "transfer",
-  DEPOSIT = "deposit",
-  WITHDRAW = "withdraw",
-}
 
 @Table({
   tableName: "transactions",
@@ -27,35 +18,36 @@ export default class Transaction extends Model {
   @Column(DataType.UUID)
   declare id: string;
 
-  // כסף: מומלץ לשמור DECIMAL, וב-TS לקבל כ-string (Sequelize מחזיר DECIMAL כטקסט)
   @AllowNull(false)
   @Column(DataType.DECIMAL(14, 2))
   declare amount: string;
 
   @AllowNull(false)
-  @Default(TransactionType.TRANSFER)
-  @Column(DataType.ENUM(...Object.values(TransactionType)))
-  declare type: TransactionType;
+  @Default("transfer")
+  @Column(DataType.ENUM("transfer", "deposit", "withdraw"))
+  declare type: "transfer" | "deposit" | "withdraw";
 
   @AllowNull(true)
   @Column(DataType.STRING(255))
-  declare description?: string;
+  declare description: string | null;
 
-  // מאיזה חשבון (ב-deposit יכול להיות null)
-  @ForeignKey(() => BankAccount)
   @AllowNull(true)
-  @Column(DataType.UUID)
-  declare fromAccountId?: string;
+  @Column({
+    type: DataType.UUID,
+    field: "from_account_id",
+  })
+  declare fromAccountId: string | null;
 
-  @BelongsTo(() => BankAccount, "fromAccountId")
-  declare fromAccount?: BankAccount;
-
-  // לאיזה חשבון (ב-withdraw יכול להיות null)
-  @ForeignKey(() => BankAccount)
   @AllowNull(true)
-  @Column(DataType.UUID)
-  declare toAccountId?: string;
+  @Column({
+    type: DataType.UUID,
+    field: "to_account_id",
+  })
+  declare toAccountId: string | null;
 
-  @BelongsTo(() => BankAccount, "toAccountId")
-  declare toAccount?: BankAccount;
+  @Column({ field: "created_at" })
+  declare createdAt: Date;
+
+  @Column({ field: "updated_at" })
+  declare updatedAt: Date;
 }

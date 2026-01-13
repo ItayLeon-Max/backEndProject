@@ -8,6 +8,7 @@ import {
   Table,
   Unique,
 } from "sequelize-typescript";
+import type { Role } from "../types/role";
 
 @Table({
   tableName: "users",
@@ -39,6 +40,6 @@ export default class User extends Model {
 
   @AllowNull(false)
   @Default("user")
-  @Column(DataType.STRING(20))
-  declare role: string;
+  @Column(DataType.ENUM("user", "admin"))
+  declare role: Role;
 }

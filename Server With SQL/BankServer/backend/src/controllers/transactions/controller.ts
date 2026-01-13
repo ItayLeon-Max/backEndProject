@@ -1,195 +1,222 @@
 import { Request, Response, NextFunction } from "express";
-import AppError from "../../errors/app-error";
 import { StatusCodes } from "http-status-codes";
-import { transferMoney, depositMoney, withdrawMoney } from "../../services/transaction.service";
-import Transaction, { TransactionType } from "../../models/transaction";
+import AppError from "../../errors/app-error";
+import Transaction from "../../models/transaction";
 import BankAccount from "../../models/bankAccount";
+import sequelize from "../../db/sequelize";
 import { Op } from "sequelize";
-import User from "../../models/user";
 
-// ממשק לבקשה מאומתת
-interface AuthenticatedRequest extends Request {
-  user: { id: string; email: string; role: string; [key: string]: unknown };
-}
-
-type Direction = "in" | "out";
-
-type TxResponseItem = {
-  id: string;
-  type: TransactionType;
-  amount: string; // המקורי מהDB
-  signedAmount: number; // +/- לפי כיוון
-  direction: Direction;
-  counterpartyName: string | null;
-  description: string | null;
-  createdAt: Date;
+type TransferBody = {
+  toAccountNumber: string;
+  amount: number;
+  description?: string;
 };
 
-function toNumberSafe(v: unknown): number {
-  const n = typeof v === "string" || typeof v === "number" ? Number(v) : NaN;
-  return Number.isFinite(n) ? n : 0;
-}
+type SimpleTxBody = {
+  amount: number;
+  description?: string;
+};
 
-// העברת כסף בין חשבונות
-export async function transfer(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function transfer(req: Request<{}, {}, TransferBody>, res: Response, next: NextFunction): Promise<void> {
   try {
-    const fromUserId = req.user.id;
-    const { toAccountNumber, amount, description } = req.body as {
-      toAccountNumber: string;
-      amount: number;
-      description?: string;
-    };
-
-    if (!toAccountNumber) {
-      return next(new AppError(StatusCodes.BAD_REQUEST, "toAccountNumber is required"));
+    if (!req.user) {
+      next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
+      return;
     }
 
-    const result = await transferMoney({
-      fromUserId,
-      toAccountNumber,
-      amount: Number(amount),
-      description,
+    const { toAccountNumber, amount, description } = req.body;
+
+    if (!toAccountNumber || !Number.isFinite(amount) || amount <= 0) {
+      next(new AppError(StatusCodes.BAD_REQUEST, "Invalid transfer data"));
+      return;
+    }
+
+    await sequelize.transaction(async (t) => {
+      const fromAcc = await BankAccount.findOne({
+        where: { userId: req.user!.id },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!fromAcc) throw new AppError(StatusCodes.NOT_FOUND, "Your account not found");
+
+      const toAcc = await BankAccount.findOne({
+        where: { accountNumber: toAccountNumber },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!toAcc) throw new AppError(StatusCodes.NOT_FOUND, "Target account not found");
+
+      const n = Number(amount);
+      const fromBal = Number(fromAcc.balance);
+      if (fromBal < n) throw new AppError(StatusCodes.BAD_REQUEST, "Insufficient funds");
+
+      fromAcc.balance = fromBal - n;
+      toAcc.balance = Number(toAcc.balance) + n;
+
+      await fromAcc.save({ transaction: t });
+      await toAcc.save({ transaction: t });
+
+      await Transaction.create(
+        {
+          type: "transfer",
+          amount: String(n),
+          description: description ?? null,
+          fromAccountId: fromAcc.id,
+          toAccountId: toAcc.id,
+        } as any,
+        { transaction: t }
+      );
     });
 
-    res.status(StatusCodes.CREATED).json(result);
-  } catch (e) {
-    next(e);
+    res.json({ message: "Transfer completed" });
+  } catch (e: unknown) {
+    if (e instanceof AppError) {
+      next(e);
+      return;
+    }
+    const msg = e instanceof Error ? e.message : "Server error";
+    next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, msg));
   }
 }
 
-// הפקדת כסף לחשבון
-export async function deposit(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function deposit(req: Request<{}, {}, SimpleTxBody>, res: Response, next: NextFunction): Promise<void> {
   try {
-    const userId = req.user.id;
-    const { amount, description } = req.body as { amount: number; description?: string };
-
-    if (amount === undefined) {
-      return next(new AppError(StatusCodes.BAD_REQUEST, "amount is required"));
+    if (!req.user) {
+      next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
+      return;
     }
 
-    const result = await depositMoney({
-      userId,
-      amount: Number(amount),
-      description,
+    const { amount, description } = req.body;
+    const n = Number(amount);
+
+    if (!Number.isFinite(n) || n <= 0) {
+      next(new AppError(StatusCodes.BAD_REQUEST, "Invalid amount"));
+      return;
+    }
+
+    await sequelize.transaction(async (t) => {
+      const acc = await BankAccount.findOne({
+        where: { userId: req.user!.id },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!acc) throw new AppError(StatusCodes.NOT_FOUND, "Account not found");
+
+      acc.balance = Number(acc.balance) + n;
+      await acc.save({ transaction: t });
+
+      await Transaction.create(
+        {
+          type: "deposit",
+          amount: String(n),
+          description: description ?? null,
+          toAccountId: acc.id,
+        } as any,
+        { transaction: t }
+      );
     });
 
-    res.status(StatusCodes.CREATED).json(result);
-  } catch (e) {
-    next(e);
+    res.json({ message: "Deposit completed" });
+  } catch (e: unknown) {
+    if (e instanceof AppError) {
+      next(e);
+      return;
+    }
+    const msg = e instanceof Error ? e.message : "Server error";
+    next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, msg));
   }
 }
 
-// משיכת כסף מהחשבון
-export async function withdraw(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function withdraw(req: Request<{}, {}, SimpleTxBody>, res: Response, next: NextFunction): Promise<void> {
   try {
-    const userId = req.user.id;
-    const { amount, description } = req.body as { amount: number; description?: string };
-
-    if (amount === undefined) {
-      return next(new AppError(StatusCodes.BAD_REQUEST, "amount is required"));
+    if (!req.user) {
+      next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
+      return;
     }
 
-    const result = await withdrawMoney({
-      userId,
-      amount: Number(amount),
-      description,
+    const { amount, description } = req.body;
+    const n = Number(amount);
+
+    if (!Number.isFinite(n) || n <= 0) {
+      next(new AppError(StatusCodes.BAD_REQUEST, "Invalid amount"));
+      return;
+    }
+
+    await sequelize.transaction(async (t) => {
+      const acc = await BankAccount.findOne({
+        where: { userId: req.user!.id },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!acc) throw new AppError(StatusCodes.NOT_FOUND, "Account not found");
+
+      const bal = Number(acc.balance);
+      if (bal < n) throw new AppError(StatusCodes.BAD_REQUEST, "Insufficient funds");
+
+      acc.balance = bal - n;
+      await acc.save({ transaction: t });
+
+      await Transaction.create(
+        {
+          type: "withdraw",
+          amount: String(n),
+          description: description ?? null,
+          fromAccountId: acc.id,
+        } as any,
+        { transaction: t }
+      );
     });
 
-    res.status(StatusCodes.CREATED).json(result);
-  } catch (e) {
-    next(e);
+    res.json({ message: "Withdraw completed" });
+  } catch (e: unknown) {
+    if (e instanceof AppError) {
+      next(e);
+      return;
+    }
+    const msg = e instanceof Error ? e.message : "Server error";
+    next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, msg));
   }
 }
 
-// קבלת היסטוריית עסקאות של המשתמש
-export async function getMyTransactions(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function getMyTransactions(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const userId = req.user.id;
+    if (!req.user) {
+      next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
+      return;
+    }
 
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const limit = Math.min(50, Math.max(1, Number(req.query.limit ?? 20)));
-    const offset = (page - 1) * limit;
+    // 1) מוצאים את החשבון של המשתמש
+    const acc = await BankAccount.findOne({ where: { userId: req.user.id } });
+    if (!acc) {
+      next(new AppError(StatusCodes.NOT_FOUND, "Account not found"));
+      return;
+    }
 
-    const type = typeof req.query.type === "string" ? req.query.type : undefined;
+    // 2) פאג'ינציה
+    const page = Number(req.query.page ?? 1);
+    const limit = Number(req.query.limit ?? 8);
+    const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 50 ? limit : 8;
+    const offset = (safePage - 1) * safeLimit;
 
-    const myAccount = await BankAccount.findOne({ where: { userId } });
-    if (!myAccount) return next(new AppError(StatusCodes.NOT_FOUND, "Bank account not found"));
-
-    const where: Record<string, unknown> = {
-      [Op.or]: [{ fromAccountId: myAccount.id }, { toAccountId: myAccount.id }],
-    };
-
-    if (type) where.type = type;
-
+    // 3) מביאים טרנזקציות לפי from/to של החשבון
     const { rows, count } = await Transaction.findAndCountAll({
-      where,
+      where: {
+        [Op.or]: [{ fromAccountId: acc.id }, { toAccountId: acc.id }],
+      },
       order: [["createdAt", "DESC"]],
-      limit,
+      limit: safeLimit,
       offset,
-      include: [
-        {
-          model: BankAccount,
-          as: "fromAccount",
-          attributes: ["id", "accountNumber", "userId"],
-          include: [{ model: User, as: "user", attributes: ["id", "name"] }],
-        },
-        {
-          model: BankAccount,
-          as: "toAccount",
-          attributes: ["id", "accountNumber", "userId"],
-          include: [{ model: User, as: "user", attributes: ["id", "name"] }],
-        },
-      ],
-    });
-
-    const items: TxResponseItem[] = rows.map((tx) => {
-      const baseAmount = toNumberSafe(tx.amount);
-
-      let signedAmount = baseAmount;
-      let direction: Direction = "in";
-      let counterpartyName: string | null = null;
-
-      if (tx.type === TransactionType.DEPOSIT) {
-        signedAmount = +baseAmount;
-        direction = "in";
-      } else if (tx.type === TransactionType.WITHDRAW) {
-        signedAmount = -baseAmount;
-        direction = "out";
-      } else if (tx.type === TransactionType.TRANSFER) {
-        // אם אני המקור => מינוס
-        if (tx.fromAccountId === myAccount.id) {
-          signedAmount = -baseAmount;
-          direction = "out";
-          counterpartyName = tx.toAccount?.user?.name ?? null;
-        }
-
-        // אם אני היעד => פלוס
-        if (tx.toAccountId === myAccount.id) {
-          signedAmount = +baseAmount;
-          direction = "in";
-          counterpartyName = tx.fromAccount?.user?.name ?? null;
-        }
-      }
-
-      return {
-        id: tx.id,
-        type: tx.type,
-        amount: tx.amount,
-        signedAmount,
-        direction,
-        counterpartyName,
-        description: tx.description ?? null,
-        createdAt: tx.createdAt,
-      };
     });
 
     res.json({
-      page,
-      limit,
+      items: rows,
+      page: safePage,
+      limit: safeLimit,
       total: count,
-      items,
     });
-  } catch (e) {
-    next(e);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Server error";
+    next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, msg));
   }
 }

@@ -25,8 +25,8 @@
     "host": "smtp.gmail.com",
     "port": 587,
     "secure": false,
-    "user": "YOUR_GMAIL@gmail.com",
-    "pass": "YOUR_APP_PASSWORD",
-    "from": "Bank Client <YOUR_GMAIL@gmail.com>"
+    "user": "itayleonconceot14@gmail.com",
+    "pass": "cmja aitg wupn phxq",
+    "from": "BankServer <itayleonconceot14@gmail.com>"
   }
 }

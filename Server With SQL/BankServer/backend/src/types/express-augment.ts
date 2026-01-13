@@ -1,16 +1,16 @@
-import "express";
-
-export type UserPayload = {
-  id: string;
-  email?: string;
-  role?: string;
-  [key: string]: unknown;
-};
+import type { Role } from "./role";
+export {};
 
 declare global {
   namespace Express {
     interface Request {
-      user?: UserPayload;
+      user?: {
+        id: string;
+        email: string;
+        role: Role;
+        name?: string;
+        [key: string]: unknown;
+      };
     }
   }
 }

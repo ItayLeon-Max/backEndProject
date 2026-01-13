@@ -1,28 +1,27 @@
-import { Response, NextFunction } from "express";
-import BankAccount from "../../models/bankAccount";
-import AppError from "../../errors/app-error";
+import { Request, Response, NextFunction } from "express";
 import { StatusCodes } from "http-status-codes";
-import { Request } from "express";
+import AppError from "../../errors/app-error";
+import BankAccount from "../../models/bankAccount";
 
-interface AuthenticatedRequest extends Request {
-  user: { id: string; email: string; role: string; [key: string]: any };
-}
-
-export async function getMyAccount(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function getMyAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const userId = req.user.id;
+    if (!req.user) {
+      next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
+      return;
+    }
 
     const account = await BankAccount.findOne({
-      where: { userId },
-      attributes: ["id", "accountNumber", "balance", "userId", "createdAt", "updatedAt"],
+      where: { userId: req.user.id },
     });
 
     if (!account) {
-      return next(new AppError(StatusCodes.NOT_FOUND, "Bank account not found"));
+      next(new AppError(StatusCodes.NOT_FOUND, "Account not found"));
+      return;
     }
 
     res.json(account);
-  } catch (e: any) {
-    next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, e.message));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Server error";
+    next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, msg));
   }
 }
