@@ -5,7 +5,7 @@ import User from "../../models/user";
 import type { Role } from "../../types/role";
 import { toRole } from "../../types/role";
 import { Op } from "sequelize";
-
+import LoanPayment, { LoanPaymentStatus } from "../../models/loanPayment";
 import sequelize from "../../db/sequelize";
 import BankAccount from "../../models/bankAccount";
 import Transaction from "../../models/transaction";

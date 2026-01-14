@@ -1,10 +1,10 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import React, { useMemo } from "react";
+import React from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Admin from "../src/pages/admin";
+import AdminUserLoans from "../src/pages/ AdminUserLoans";
 
 type JwtPayload = {
   id: string;
@@ -43,7 +43,7 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   if (!token) return <Navigate to="/" replace />;
 
   const payload = decodeJwtPayload(token);
-  const role = (payload?.role ?? "").toLowerCase();
+  const role = String(payload?.role ?? "").toLowerCase();
 
   if (role !== "admin") return <Navigate to="/dashboard" replace />;
   return children;
@@ -78,6 +78,16 @@ export default function App() {
           element={
             <RequireAdmin>
               <Admin />
+            </RequireAdmin>
+          }
+        />
+
+        {/* ✅ מסך מנהל: הלוואות של משתמש ספציפי */}
+        <Route
+          path="/admin/users/:id/loans"
+          element={
+            <RequireAdmin>
+              <AdminUserLoans />
             </RequireAdmin>
           }
         />

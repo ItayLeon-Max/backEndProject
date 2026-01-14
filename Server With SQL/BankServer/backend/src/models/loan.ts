@@ -11,13 +11,7 @@ import {
 } from "sequelize-typescript";
 import BankAccount from "./bankAccount";
 
-export enum LoanStatus {
-  PENDING = "pending",
-  APPROVED = "approved",
-  REJECTED = "rejected",
-  ACTIVE = "active",
-  CLOSED = "closed",
-}
+export type LoanStatus = "pending" | "approved" | "rejected" | "active" | "closed";
 
 @Table({
   tableName: "loans",
@@ -34,7 +28,7 @@ export default class Loan extends Model {
   @Column({ type: DataType.UUID, field: "account_id" })
   declare accountId: string;
 
-  @BelongsTo(() => BankAccount, "accountId")
+  @BelongsTo(() => BankAccount)
   declare account?: BankAccount;
 
   @AllowNull(false)
@@ -54,8 +48,8 @@ export default class Loan extends Model {
   declare monthlyPayment: string;
 
   @AllowNull(false)
-  @Default(LoanStatus.PENDING)
-  @Column(DataType.ENUM(...Object.values(LoanStatus)))
+  @Default("pending")
+  @Column(DataType.ENUM("pending", "approved", "rejected", "active", "closed"))
   declare status: LoanStatus;
 
   @AllowNull(false)
@@ -64,9 +58,9 @@ export default class Loan extends Model {
 
   @AllowNull(true)
   @Column({ type: DataType.DATE, field: "start_date" })
-  declare startDate?: Date | null;
+  declare startDate: Date | null;
 
   @AllowNull(true)
-  @Column({ type: DataType.STRING(255), field: "note" })
-  declare note?: string | null;
+  @Column(DataType.STRING(255))
+  declare note: string | null;
 }

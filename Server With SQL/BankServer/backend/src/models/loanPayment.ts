@@ -29,34 +29,34 @@ export default class LoanPayment extends Model {
 
   @ForeignKey(() => Loan)
   @AllowNull(false)
-  @Column(DataType.UUID)
+  @Column({ type: DataType.UUID, field: "loan_id" })
   declare loanId: string;
 
   @BelongsTo(() => Loan)
   declare loan?: Loan;
 
   @AllowNull(false)
-  @Column(DataType.DATE)
+  @Column({ type: DataType.DATE, field: "due_date" })
   declare dueDate: Date;
 
   @AllowNull(false)
-  @Column(DataType.DECIMAL(14, 2))
+  @Column({ type: DataType.DECIMAL(14, 2), field: "amount_due" })
   declare amountDue: string;
 
   @AllowNull(false)
-  @Column(DataType.DECIMAL(14, 2))
+  @Column({ type: DataType.DECIMAL(14, 2), field: "principal_part" })
   declare principalPart: string;
 
   @AllowNull(false)
-  @Column(DataType.DECIMAL(14, 2))
+  @Column({ type: DataType.DECIMAL(14, 2), field: "interest_part" })
   declare interestPart: string;
 
   @AllowNull(false)
   @Default(LoanPaymentStatus.PENDING)
-  @Column(DataType.ENUM(...Object.values(LoanPaymentStatus)))
+  @Column({ type: DataType.ENUM("pending", "paid", "late") })
   declare status: LoanPaymentStatus;
 
   @AllowNull(true)
-  @Column(DataType.DATE)
+  @Column({ type: DataType.DATE, field: "paid_at" })
   declare paidAt?: Date | null;
 }
