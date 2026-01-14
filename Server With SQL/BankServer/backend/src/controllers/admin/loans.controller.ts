@@ -49,7 +49,7 @@ export async function getUserLoansOverview(
       attributes: ["id", "accountNumber", "balance", "userId", "createdAt"],
     });
 
-    const accountIds = accounts.map(a => a.id);
+    const accountIds = accounts.map((a) => a.id);
 
     const loans = accountIds.length
       ? await Loan.findAll({
@@ -58,7 +58,7 @@ export async function getUserLoansOverview(
         })
       : [];
 
-    const loanIds = loans.map(l => l.id);
+    const loanIds = loans.map((l) => l.id);
 
     const payments = loanIds.length
       ? await LoanPayment.findAll({
@@ -77,12 +77,12 @@ export async function getUserLoansOverview(
 
     let delinquentLoans = 0;
 
-    const loanItems = loans.map(l => {
+    const loanItems = loans.map((l) => {
       const p = paymentsByLoan.get(l.id) ?? [];
 
-      const latePayments = p.filter(x => x.status === LoanPaymentStatus.LATE);
+      const latePayments = p.filter((x) => x.status === LoanPaymentStatus.LATE);
       const pendingOverdue = p.filter(
-        x => x.status === LoanPaymentStatus.PENDING && x.dueDate < new Date()
+        (x) => x.status === LoanPaymentStatus.PENDING && x.dueDate < new Date()
       );
 
       const isLate = latePayments.length > 0 || pendingOverdue.length > 0;
@@ -92,9 +92,9 @@ export async function getUserLoansOverview(
         (a, b) => a.dueDate.getTime() - b.dueDate.getTime()
       );
 
-      const nextPending = p.find(x => x.status === LoanPaymentStatus.PENDING);
+      const nextPending = p.find((x) => x.status === LoanPaymentStatus.PENDING);
       const lastPaid = [...p]
-        .filter(x => x.status === LoanPaymentStatus.PAID)
+        .filter((x) => x.status === LoanPaymentStatus.PAID)
         .sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime())[0];
 
       return {
@@ -174,7 +174,8 @@ export async function chargeLateFee(
       if (!Number.isFinite(bal)) throw new AppError(StatusCodes.BAD_REQUEST, "Account balance invalid");
       if (bal < fee) throw new AppError(StatusCodes.BAD_REQUEST, "Insufficient funds for late fee");
 
-      account.balance = bal - fee;
+      // ✅ DECIMAL => לשמור כ-string
+      account.balance = (bal - fee).toFixed(2);
       await account.save({ transaction: t });
 
       await Transaction.create(

@@ -12,12 +12,8 @@ type RequestLoanBody = {
 };
 
 function calcMonthlyPayment(principal: number, months: number, annualRate: number): number {
-  // ריבית חודשית
   const r = annualRate / 100 / 12;
-
   if (r === 0) return principal / months;
-
-  // נוסחת annuity
   return (principal * r) / (1 - Math.pow(1 + r, -months));
 }
 
@@ -27,26 +23,20 @@ export async function requestLoanController(
   next: NextFunction
 ): Promise<void> {
   try {
-    if (!req.user) {
-      next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
-      return;
-    }
+    if (!req.user) return void next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
 
     const principal = Number(req.body.principal);
     const months = Number(req.body.months);
     const annualRate = Number(req.body.annualRate);
 
     if (!Number.isFinite(principal) || principal <= 0) {
-      next(new AppError(StatusCodes.BAD_REQUEST, "Invalid principal"));
-      return;
+      return void next(new AppError(StatusCodes.BAD_REQUEST, "Invalid principal"));
     }
     if (!Number.isFinite(months) || months < 1 || months > 120) {
-      next(new AppError(StatusCodes.BAD_REQUEST, "Invalid months"));
-      return;
+      return void next(new AppError(StatusCodes.BAD_REQUEST, "Invalid months"));
     }
     if (!Number.isFinite(annualRate) || annualRate < 0 || annualRate > 50) {
-      next(new AppError(StatusCodes.BAD_REQUEST, "Invalid annualRate"));
-      return;
+      return void next(new AppError(StatusCodes.BAD_REQUEST, "Invalid annualRate"));
     }
 
     const monthlyPayment = calcMonthlyPayment(principal, months, annualRate);
@@ -57,24 +47,27 @@ export async function requestLoanController(
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
-
       if (!account) throw new AppError(StatusCodes.NOT_FOUND, "Account not found");
 
-      // יצירת הלוואה
+      const bal = Number(account.balance);
+      if (!Number.isFinite(bal)) throw new AppError(StatusCodes.BAD_REQUEST, "Account balance invalid");
+
       const loan = await Loan.create(
         {
-          userId: req.user!.id,
-          principal,
-          months,
-          annualRate,
-          monthlyPayment,
-          status: "approved", // תתאים למה שיש אצלך בטבלה
+          accountId: account.id,
+          principal: principal.toFixed(2),
+          remainingPrincipal: principal.toFixed(2),
+          annualInterestRate: annualRate.toFixed(2),
+          termMonths: months,
+          monthlyPayment: monthlyPayment.toFixed(2),
+          status: "active", // אם אצלך זה approved אז שנה ל-"approved"
+          startDate: new Date(),
+          note: null,
         } as any,
         { transaction: t }
       );
 
-      // להכניס כסף לחשבון (אם זה מה שאתה עושה אצלך)
-      account.balance = Number(account.balance) + principal;
+      account.balance = (bal + principal).toFixed(2);
       await account.save({ transaction: t });
 
       return { loan, account };
@@ -86,10 +79,7 @@ export async function requestLoanController(
       balance: result.account.balance,
     });
   } catch (e: unknown) {
-    if (e instanceof AppError) {
-      next(e);
-      return;
-    }
+    if (e instanceof AppError) return void next(e);
     const msg = e instanceof Error ? e.message : "Server error";
     next(new AppError(StatusCodes.INTERNAL_SERVER_ERROR, msg));
   }

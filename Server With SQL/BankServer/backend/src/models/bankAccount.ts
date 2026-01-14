@@ -24,19 +24,43 @@ export default class BankAccount extends Model {
 
   @AllowNull(false)
   @Unique
-  @Column(DataType.STRING(8))
-  declare accountNumber: string; 
+  @Column({ type: DataType.STRING(8), field: "account_number" })
+  declare accountNumber: string;
 
+  // ✅ DECIMAL חוזר לרוב כ-string
   @AllowNull(false)
-  @Default(0)
-  @Column(DataType.DECIMAL(14, 2))
-  declare balance: number;
+  @Default("0.00")
+  @Column({ type: DataType.DECIMAL(14, 2), field: "balance" })
+  declare balance: string;
 
   @ForeignKey(() => User)
   @AllowNull(false)
-  @Column(DataType.UUID)
+  @Column({ type: DataType.UUID, field: "user_id" })
   declare userId: string;
 
   @BelongsTo(() => User)
-  declare user: User;
+  declare user?: User;
+
+  // ✅ מסגרת מאושרת (כמה מותר לרדת למינוס)
+  @AllowNull(false)
+  @Default("0.00")
+  @Column({ type: DataType.DECIMAL(14, 2), field: "overdraft_limit" })
+  declare overdraftLimit: string;
+
+  // ✅ בקשה להגדלת מסגרת (בהמתנה)
+  @AllowNull(true)
+  @Column({ type: DataType.DECIMAL(14, 2), field: "overdraft_requested_limit" })
+  declare overdraftRequestedLimit: string | null;
+
+  @AllowNull(false)
+  @Default("none")
+  @Column({
+    type: DataType.ENUM("none", "pending", "approved", "rejected"),
+    field: "overdraft_request_status",
+  })
+  declare overdraftRequestStatus: "none" | "pending" | "approved" | "rejected";
+
+  @AllowNull(true)
+  @Column({ type: DataType.STRING(255), field: "overdraft_request_note" })
+  declare overdraftRequestNote: string | null;
 }
