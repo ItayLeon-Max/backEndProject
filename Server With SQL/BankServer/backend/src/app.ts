@@ -12,6 +12,8 @@ import loansRouter from "../src/routers/loans/loans"
 import usersRouter from "../src/routers/users/users"
 import adminRouter from "../src/routers/admin/admin"
 import "./types/express-augment";
+import overdraftRouter from "../src/routers/overdraft/overdraft";
+import overdraftAdminRouter from "../src/routers/admin/overdraft";
 
 const port = config.get<string>('app.port')
 const name = config.get<string>('app.name')
@@ -34,6 +36,9 @@ export async function start() {
     app.use('/loans', loansRouter)
     app.use("/users", usersRouter);
     app.use("/admin", adminRouter);
+    app.use("/overdraft", overdraftRouter);
+    app.use("/admin", overdraftAdminRouter);
+    
     
 
     // special notFound middleware
