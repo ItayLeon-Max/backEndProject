@@ -1,10 +1,13 @@
 import React from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
-import Admin from "../src/pages/admin";
-import AdminUserLoans from "../src/pages/ AdminUserLoans";
+import Admin from "./pages/admin";
+import AdminUserLoans from "./pages/AdminUserLoans";
+import Overdraft from "./pages/Overdraft";
+import AdminOverdraftRequests from "./pages/AdminOverdraftRequests"; // ✅ חדש
 
 type JwtPayload = {
   id: string;
@@ -43,7 +46,10 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   if (!token) return <Navigate to="/" replace />;
 
   const payload = decodeJwtPayload(token);
-  const role = String(payload?.role ?? "").toLowerCase();
+  const role = String(payload?.role ?? "").trim().toLowerCase();
+
+  // אם הטוקן לא תקין/אין role – מחזירים ל-login
+  if (!payload?.id || !role) return <Navigate to="/" replace />;
 
   if (role !== "admin") return <Navigate to="/dashboard" replace />;
   return children;
@@ -60,6 +66,15 @@ export default function App() {
           element={
             <RequireAuth>
               <Dashboard />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/overdraft"
+          element={
+            <RequireAuth>
+              <Overdraft />
             </RequireAuth>
           }
         />
@@ -82,12 +97,21 @@ export default function App() {
           }
         />
 
-        {/* ✅ מסך מנהל: הלוואות של משתמש ספציפי */}
         <Route
           path="/admin/users/:id/loans"
           element={
             <RequireAdmin>
               <AdminUserLoans />
+            </RequireAdmin>
+          }
+        />
+
+        {/* ✅ מסך מנהל: בקשות מסגרת */}
+        <Route
+          path="/admin/overdraft"
+          element={
+            <RequireAdmin>
+              <AdminOverdraftRequests />
             </RequireAdmin>
           }
         />

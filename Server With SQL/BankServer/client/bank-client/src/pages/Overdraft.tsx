@@ -3,23 +3,23 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { api } from "../api";
 
-type OverdraftMeResponse = {
-  account: {
-    id: string;
-    accountNumber: string;
-    balance: string | number;
-    overdraftLimit: string | number;
+type OverdraftStatus = "none" | "pending" | "approved" | "rejected";
 
-    overdraftRequestedLimit: string | number | null;
-    overdraftRequestStatus: "none" | "pending" | "approved" | "rejected";
-    overdraftRequestNote: string | null;
+type OverdraftMeResponse = {
+  accountId: string;
+  balance: number;
+  overdraftLimit: number;
+  remainingBeforeLimit: number;
+  request: {
+    status: OverdraftStatus;
+    requestedLimit: number | null;
+    note: string | null;
   };
 };
 
-function formatMoney(v: string | number) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return String(v);
-  return new Intl.NumberFormat("he-IL", { style: "currency", currency: "ILS" }).format(n);
+function formatMoney(v: number) {
+  if (!Number.isFinite(v)) return String(v);
+  return new Intl.NumberFormat("he-IL", { style: "currency", currency: "ILS" }).format(v);
 }
 
 function extractErrorMessage(e: unknown): string {
@@ -67,30 +67,23 @@ export default function Overdraft() {
   }, []);
 
   const computed = useMemo(() => {
-    const acc = data?.account;
-    if (!acc) return null;
+    const d = data;
+    if (!d) return null;
 
-    const bal = Number(acc.balance);
-    const limit = Number(acc.overdraftLimit);
+    const bal = Number(d.balance);
+    const limit = Number(d.overdraftLimit);
 
-    const usedMinus = bal < 0 ? Math.abs(bal) : 0; // כמה במינוס
-    const withinFrame = Math.min(usedMinus, limit); // כמה מתוך המסגרת נוצל
-    const exceeded = Math.max(0, usedMinus - limit); // כמה מעבר למסגרת
-
+    const usedMinus = bal < 0 ? Math.abs(bal) : 0;
+    const withinFrame = limit > 0 ? Math.min(usedMinus, limit) : 0;
+    const exceeded = limit > 0 ? Math.max(0, usedMinus - limit) : usedMinus > 0 ? usedMinus : 0;
     const pct = limit > 0 ? Math.min(100, (withinFrame / limit) * 100) : 0;
 
-    return {
-      bal,
-      limit,
-      usedMinus,
-      withinFrame,
-      exceeded,
-      pct,
-    };
+    return { bal, limit, usedMinus, withinFrame, exceeded, pct };
   }, [data]);
 
   async function requestIncrease() {
     const n = Number(reqLimit);
+
     if (!Number.isFinite(n) || n <= 0) {
       setMsg({ kind: "err", text: "מסגרת מבוקשת חייבת להיות מספר חיובי" });
       return;
@@ -99,7 +92,11 @@ export default function Overdraft() {
     setBusy(true);
     setMsg(null);
     try {
-      await api.post("/overdraft/me/request", { requestedLimit: n, note: reqNote || undefined });
+      await api.post("/overdraft/me/request", {
+        requestedLimit: n,
+        note: reqNote.trim() ? reqNote.trim() : undefined,
+      });
+
       setMsg({ kind: "ok", text: "הבקשה נשלחה ✅ מחכה לאישור מנהל" });
       setReqLimit("");
       setReqNote("");
@@ -111,9 +108,17 @@ export default function Overdraft() {
     }
   }
 
+  // ✅ Back אמיתי: אם יש היסטוריה -> אחורה, אחרת לדשבורד
   function back() {
-    nav("/dashboard");
+    // אם אין history (נכנסו ישירות לכתובת), נחזיר לדשבורד
+    if (window.history.length <= 1) {
+      nav("/dashboard", { replace: true });
+      return;
+    }
+    nav(-1);
   }
+
+  const disableRequest = busy || data?.request.status === "pending";
 
   return (
     <div className="bg">
@@ -154,7 +159,6 @@ export default function Overdraft() {
             <div className="alert">No data.</div>
           ) : (
             <div style={{ display: "grid", gap: 14 }}>
-              {/* Summary */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
                 <div className="chipCard">
                   <div className="chipK">Balance</div>
@@ -170,7 +174,6 @@ export default function Overdraft() {
                 </div>
               </div>
 
-              {/* Progress bar */}
               <div
                 style={{
                   padding: 14,
@@ -181,7 +184,9 @@ export default function Overdraft() {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                   <div style={{ fontWeight: 900 }}>ניצול מסגרת</div>
-                  <div style={{ fontWeight: 800, opacity: 0.9 }}>{computed.limit > 0 ? `${computed.pct.toFixed(0)}%` : "—"}</div>
+                  <div style={{ fontWeight: 800, opacity: 0.9 }}>
+                    {computed.limit > 0 ? `${computed.pct.toFixed(0)}%` : "—"}
+                  </div>
                 </div>
 
                 <div style={{ height: 10 }} />
@@ -209,6 +214,7 @@ export default function Overdraft() {
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, opacity: 0.8 }}>
                   <div>Within frame: {formatMoney(computed.withinFrame)}</div>
                   <div>Exceeded: {formatMoney(computed.exceeded)}</div>
+                  <div>Remaining before limit: {formatMoney(Number(data.remainingBeforeLimit))}</div>
                 </div>
 
                 {computed.exceeded > 0 && (
@@ -218,7 +224,6 @@ export default function Overdraft() {
                 )}
               </div>
 
-              {/* Request status */}
               <div
                 style={{
                   padding: 14,
@@ -228,17 +233,19 @@ export default function Overdraft() {
                 }}
               >
                 <div style={{ fontWeight: 900 }}>בקשה להגדלת מסגרת</div>
+
                 <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                  Status: <b>{data.account.overdraftRequestStatus}</b>
-                  {data.account.overdraftRequestedLimit != null && (
+                  Status: <b>{data.request.status}</b>
+                  {data.request.requestedLimit != null && (
                     <>
                       {" "}
-                      • Requested: <b>{formatMoney(data.account.overdraftRequestedLimit)}</b>
+                      • Requested: <b>{formatMoney(Number(data.request.requestedLimit))}</b>
                     </>
                   )}
                 </div>
-                {data.account.overdraftRequestNote && (
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>Note: {data.account.overdraftRequestNote}</div>
+
+                {data.request.note && (
+                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>Note: {data.request.note}</div>
                 )}
 
                 <div style={{ height: 12 }} />
@@ -250,7 +257,7 @@ export default function Overdraft() {
                   onChange={(e) => setReqLimit(e.target.value)}
                   placeholder="למשל: 5000"
                   inputMode="decimal"
-                  disabled={busy || data.account.overdraftRequestStatus === "pending"}
+                  disabled={disableRequest}
                 />
 
                 <div className="label">הערה (אופציונלי)</div>
@@ -258,21 +265,24 @@ export default function Overdraft() {
                   className="input"
                   value={reqNote}
                   onChange={(e) => setReqNote(e.target.value)}
-                  placeholder="למשל: שדרוג משכורת / צורך זמני"
-                  disabled={busy || data.account.overdraftRequestStatus === "pending"}
+                  placeholder="למשל: צורך זמני / שדרוג משכורת"
+                  disabled={disableRequest}
                 />
 
                 <div className="actionRow">
-                  <button
-                    className="btnPrimary"
-                    onClick={requestIncrease}
-                    disabled={busy || data.account.overdraftRequestStatus === "pending"}
-                    type="button"
-                  >
-                    {busy ? "שולח..." : data.account.overdraftRequestStatus === "pending" ? "ממתין לאישור" : "שלח בקשה"}
+                  <button className="btnPrimary" onClick={requestIncrease} disabled={disableRequest} type="button">
+                    {busy ? "שולח..." : data.request.status === "pending" ? "ממתין לאישור" : "שלח בקשה"}
                   </button>
 
-                  <button className="btnGhostSmall" onClick={() => { setReqLimit(""); setReqNote(""); }} disabled={busy} type="button">
+                  <button
+                    className="btnGhostSmall"
+                    onClick={() => {
+                      setReqLimit("");
+                      setReqNote("");
+                    }}
+                    disabled={busy}
+                    type="button"
+                  >
                     ניקוי
                   </button>
                 </div>

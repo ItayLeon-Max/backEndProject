@@ -21,13 +21,26 @@ function toMoneyString(n: number): string {
   return Number(n).toFixed(2);
 }
 
+function num(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+// ✅ בדיקת מסגרת עו"ש: מותר לרדת עד -overdraftLimit
+function ensureWithinOverdraft(balance: number, overdraftLimit: number, debit: number) {
+  const newBalance = balance - debit;
+  const minAllowed = -Math.max(0, overdraftLimit); // אם limit שלילי/NaN -> נתייחס כ-0
+  if (newBalance < minAllowed) {
+    throw new AppError(StatusCodes.BAD_REQUEST, "Insufficient funds (overdraft limit exceeded)");
+  }
+}
+
 export async function transfer(req: Request<{}, {}, TransferBody>, res: Response, next: NextFunction): Promise<void> {
   try {
     if (!req.user) return next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
 
-    const toAccountNumber = String(req.body.toAccountNumber ?? "").trim();
-    const n = Number(req.body.amount);
-    const description = (req.body.description ?? "").trim();
+    const { toAccountNumber, amount, description } = req.body;
+    const n = Number(amount);
 
     if (!toAccountNumber || !Number.isFinite(n) || n <= 0) {
       return next(new AppError(StatusCodes.BAD_REQUEST, "Invalid transfer data"));
@@ -41,11 +54,6 @@ export async function transfer(req: Request<{}, {}, TransferBody>, res: Response
       });
       if (!fromAcc) throw new AppError(StatusCodes.NOT_FOUND, "Your account not found");
 
-      // לא מאפשרים להעביר לעצמך לפי מספר חשבון
-      if (fromAcc.accountNumber === toAccountNumber) {
-        throw new AppError(StatusCodes.BAD_REQUEST, "Cannot transfer to the same account");
-      }
-
       const toAcc = await BankAccount.findOne({
         where: { accountNumber: toAccountNumber },
         transaction: t,
@@ -53,16 +61,17 @@ export async function transfer(req: Request<{}, {}, TransferBody>, res: Response
       });
       if (!toAcc) throw new AppError(StatusCodes.NOT_FOUND, "Target account not found");
 
-      const fromBal = Number(fromAcc.balance);
-      const toBal = Number(toAcc.balance);
+      const fromBal = num(fromAcc.balance);
+      const fromLimit = num((fromAcc as any).overdraftLimit); // אמור להיות קיים אצלך במודל
+      if (!Number.isFinite(fromBal)) throw new AppError(StatusCodes.BAD_REQUEST, "Account balance invalid");
+      if (!Number.isFinite(fromLimit)) throw new AppError(StatusCodes.BAD_REQUEST, "Overdraft limit invalid");
 
-      if (!Number.isFinite(fromBal) || !Number.isFinite(toBal)) {
-        throw new AppError(StatusCodes.BAD_REQUEST, "Account balance invalid");
-      }
+      // ✅ מאפשרים מינוס במסגרת
+      ensureWithinOverdraft(fromBal, fromLimit, n);
 
-      if (fromBal < n) throw new AppError(StatusCodes.BAD_REQUEST, "Insufficient funds");
+      const toBal = num(toAcc.balance);
+      if (!Number.isFinite(toBal)) throw new AppError(StatusCodes.BAD_REQUEST, "Target balance invalid");
 
-      // ✅ balance הוא string (DECIMAL) -> חייבים לשמור string
       fromAcc.balance = toMoneyString(fromBal - n);
       toAcc.balance = toMoneyString(toBal + n);
 
@@ -73,7 +82,7 @@ export async function transfer(req: Request<{}, {}, TransferBody>, res: Response
         {
           type: "transfer",
           amount: toMoneyString(n),
-          description: description || null,
+          description: description ?? null,
           fromAccountId: fromAcc.id,
           toAccountId: toAcc.id,
         } as any,
@@ -81,7 +90,7 @@ export async function transfer(req: Request<{}, {}, TransferBody>, res: Response
       );
     });
 
-    res.json({ message: "Transfer completed ✅" });
+    res.json({ message: "Transfer completed" });
   } catch (e: unknown) {
     if (e instanceof AppError) return next(e);
     const msg = e instanceof Error ? e.message : "Server error";
@@ -94,7 +103,7 @@ export async function deposit(req: Request<{}, {}, SimpleTxBody>, res: Response,
     if (!req.user) return next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
 
     const n = Number(req.body.amount);
-    const description = (req.body.description ?? "").trim();
+    const description = req.body.description;
 
     if (!Number.isFinite(n) || n <= 0) {
       return next(new AppError(StatusCodes.BAD_REQUEST, "Invalid amount"));
@@ -108,10 +117,9 @@ export async function deposit(req: Request<{}, {}, SimpleTxBody>, res: Response,
       });
       if (!acc) throw new AppError(StatusCodes.NOT_FOUND, "Account not found");
 
-      const bal = Number(acc.balance);
+      const bal = num(acc.balance);
       if (!Number.isFinite(bal)) throw new AppError(StatusCodes.BAD_REQUEST, "Account balance invalid");
 
-      // ✅ balance הוא string
       acc.balance = toMoneyString(bal + n);
       await acc.save({ transaction: t });
 
@@ -119,7 +127,7 @@ export async function deposit(req: Request<{}, {}, SimpleTxBody>, res: Response,
         {
           type: "deposit",
           amount: toMoneyString(n),
-          description: description || null,
+          description: description ?? null,
           fromAccountId: null,
           toAccountId: acc.id,
         } as any,
@@ -127,7 +135,7 @@ export async function deposit(req: Request<{}, {}, SimpleTxBody>, res: Response,
       );
     });
 
-    res.json({ message: "Deposit completed ✅" });
+    res.json({ message: "Deposit completed" });
   } catch (e: unknown) {
     if (e instanceof AppError) return next(e);
     const msg = e instanceof Error ? e.message : "Server error";
@@ -140,7 +148,7 @@ export async function withdraw(req: Request<{}, {}, SimpleTxBody>, res: Response
     if (!req.user) return next(new AppError(StatusCodes.UNAUTHORIZED, "Unauthorized"));
 
     const n = Number(req.body.amount);
-    const description = (req.body.description ?? "").trim();
+    const description = req.body.description;
 
     if (!Number.isFinite(n) || n <= 0) {
       return next(new AppError(StatusCodes.BAD_REQUEST, "Invalid amount"));
@@ -154,12 +162,14 @@ export async function withdraw(req: Request<{}, {}, SimpleTxBody>, res: Response
       });
       if (!acc) throw new AppError(StatusCodes.NOT_FOUND, "Account not found");
 
-      const bal = Number(acc.balance);
+      const bal = num(acc.balance);
+      const limit = num((acc as any).overdraftLimit);
       if (!Number.isFinite(bal)) throw new AppError(StatusCodes.BAD_REQUEST, "Account balance invalid");
+      if (!Number.isFinite(limit)) throw new AppError(StatusCodes.BAD_REQUEST, "Overdraft limit invalid");
 
-      if (bal < n) throw new AppError(StatusCodes.BAD_REQUEST, "Insufficient funds");
+      // ✅ במקום: if (bal < n) ...
+      ensureWithinOverdraft(bal, limit, n);
 
-      // ✅ balance הוא string
       acc.balance = toMoneyString(bal - n);
       await acc.save({ transaction: t });
 
@@ -167,7 +177,7 @@ export async function withdraw(req: Request<{}, {}, SimpleTxBody>, res: Response
         {
           type: "withdraw",
           amount: toMoneyString(n),
-          description: description || null,
+          description: description ?? null,
           fromAccountId: acc.id,
           toAccountId: null,
         } as any,
@@ -175,7 +185,7 @@ export async function withdraw(req: Request<{}, {}, SimpleTxBody>, res: Response
       );
     });
 
-    res.json({ message: "Withdraw completed ✅" });
+    res.json({ message: "Withdraw completed" });
   } catch (e: unknown) {
     if (e instanceof AppError) return next(e);
     const msg = e instanceof Error ? e.message : "Server error";

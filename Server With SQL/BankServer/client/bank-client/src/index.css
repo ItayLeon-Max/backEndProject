@@ -406,3 +406,11 @@ body {
   gap: 12px;
   margin-bottom: 10px;
 }
+
+.balance-ok {
+  color: #7CFF9B;
+}
+
+.balance-bad {
+  color: #FF6B6B;
+}
