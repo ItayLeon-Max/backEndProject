@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { api } from "../api";
+import NotificationsPanel, { type NotificationItem, type NotificationKind } from "../ components/NotificationsPanel";
 
 type Account = {
   id: string;
@@ -31,6 +32,20 @@ type JwtPayload = {
   name?: string;
   email?: string;
   role?: string;
+};
+
+// ✅ תוצאה מהשרת למסגרת
+type OverdraftStatus = "none" | "pending" | "approved" | "rejected";
+type OverdraftMeResponse = {
+  accountId: string;
+  balance: number;
+  overdraftLimit: number;
+  remainingBeforeLimit: number;
+  request: {
+    status: OverdraftStatus;
+    requestedLimit: number | null;
+    note: string | null;
+  };
 };
 
 function formatMoney(v: string | number) {
@@ -112,6 +127,10 @@ function getBalanceClass(balance: string | number) {
   return n < 0 ? "balance-bad" : "balance-ok";
 }
 
+function id() {
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 export default function Dashboard() {
   const nav = useNavigate();
 
@@ -130,9 +149,11 @@ export default function Dashboard() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Toast state
-  const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const toastTimerRef = useRef<number | null>(null);
+  // ✅ toast הקיים שלך (משאירים)
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  // ✅ פאנל התראות קבוע
+  const [notifs, setNotifs] = useState<NotificationItem[]>([]);
 
   const token = localStorage.getItem("jwt") ?? "";
   const me = useMemo(() => (token ? decodeJwtPayload(token) : null), [token]);
@@ -142,21 +163,18 @@ export default function Dashboard() {
     return r === "admin";
   }, [me?.role]);
 
-  function showToast(kind: "ok" | "err", text: string, ms = 3500) {
-    setToast({ kind, text });
-
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-      toastTimerRef.current = null;
-    }, ms);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    };
+  const pushNotif = useCallback((kind: NotificationKind, text: string, ttlMs = 8000) => {
+    const item: NotificationItem = { id: id(), kind, text, createdAt: Date.now(), ttlMs };
+    setNotifs((prev) => [item, ...prev].slice(0, 6));
   }, []);
+
+  const dismissNotif = useCallback((notifId: string) => {
+    setNotifs((prev) => prev.filter((n) => n.id !== notifId));
+  }, []);
+
+  // ✅ כדי לזהות שינויי מסגרת
+  const lastOverdraftRef = useRef<{ status: OverdraftStatus; limit: number } | null>(null);
+  const firstOverdraftFetchRef = useRef(true);
 
   async function loadAll() {
     setLoading(true);
@@ -212,7 +230,8 @@ export default function Dashboard() {
 
   function setTab(tab: Action) {
     setActive(tab);
-    // לא מוחקים Toast פה כדי שלא "ייעלם" למשתמש
+    setMsg(null);
+
     if (tab === "loan") clearForm();
     if (tab !== "loan") clearLoanForm();
     if (tab !== "history" && tab !== "loan") clearForm();
@@ -222,10 +241,10 @@ export default function Dashboard() {
     try {
       const txRes = await api.get("/transactions/me", { params: { page: 1, limit: 8 } });
       setTxItems(txRes.data?.items ?? []);
-      showToast("ok", "התנועות עודכנו ✅", 1800);
+      pushNotif("info", "התנועות עודכנו");
     } catch {
       setTxItems([]);
-      showToast("err", "לא הצלחתי לרענן תנועות", 2500);
+      pushNotif("err", "נכשל רענון תנועות");
     }
   }
 
@@ -233,38 +252,46 @@ export default function Dashboard() {
     const n = Number(amount);
 
     if (!Number.isFinite(n) || n <= 0) {
-      showToast("err", "סכום חייב להיות מספר חיובי");
+      setMsg({ kind: "err", text: "סכום חייב להיות מספר חיובי" });
+      pushNotif("warn", "סכום חייב להיות מספר חיובי");
       return;
     }
 
     if (active === "transfer" && !toAccountNumber.trim()) {
-      showToast("err", "חסר מספר חשבון יעד");
+      setMsg({ kind: "err", text: "חסר מספר חשבון יעד" });
+      pushNotif("warn", "חסר מספר חשבון יעד להעברה");
       return;
     }
 
     setBusy(true);
+    setMsg(null);
 
     try {
       if (active === "deposit") {
         await api.post("/transactions/deposit", { amount: n, description: description || undefined });
-        showToast("ok", "הפקדה בוצעה ✅");
+        setMsg({ kind: "ok", text: "הפקדה בוצעה ✅" });
+        pushNotif("ok", "הפקדה בוצעה ✅");
       } else if (active === "withdraw") {
         await api.post("/transactions/withdraw", { amount: n, description: description || undefined });
-        showToast("ok", "משיכה בוצעה ✅");
+        setMsg({ kind: "ok", text: "משיכה בוצעה ✅" });
+        pushNotif("ok", "משיכה בוצעה ✅");
       } else if (active === "transfer") {
         await api.post("/transactions/transfer", {
           toAccountNumber: toAccountNumber.trim(),
           amount: n,
           description: description || undefined,
         });
-        showToast("ok", "העברה בוצעה ✅");
+        setMsg({ kind: "ok", text: "העברה בוצעה ✅" });
+        pushNotif("ok", "העברה בוצעה ✅");
       }
 
       await loadAll();
       clearForm();
       setActive("history");
     } catch (e: unknown) {
-      showToast("err", extractErrorMessage(e), 4500);
+      const m = extractErrorMessage(e);
+      setMsg({ kind: "err", text: m });
+      pushNotif("err", m, 10000);
     } finally {
       setBusy(false);
     }
@@ -276,35 +303,109 @@ export default function Dashboard() {
     const annualRate = Number(loanAnnualRate);
 
     if (!Number.isFinite(principal) || principal <= 0) {
-      showToast("err", "סכום הלוואה חייב להיות חיובי");
+      setMsg({ kind: "err", text: "סכום הלוואה חייב להיות חיובי" });
+      pushNotif("warn", "סכום הלוואה חייב להיות חיובי");
       return;
     }
     if (!Number.isFinite(months) || months < 1 || months > 120) {
-      showToast("err", "חודשים חייב להיות 1–120");
+      setMsg({ kind: "err", text: "חודשים חייב להיות 1–120" });
+      pushNotif("warn", "חודשים חייב להיות 1–120");
       return;
     }
     if (!Number.isFinite(annualRate) || annualRate < 0 || annualRate > 50) {
-      showToast("err", "ריבית שנתית חייבת להיות 0–50");
+      setMsg({ kind: "err", text: "ריבית שנתית חייבת להיות 0–50" });
+      pushNotif("warn", "ריבית שנתית חייבת להיות 0–50");
       return;
     }
 
     setBusy(true);
+    setMsg(null);
 
     try {
       const res = await api.post("/loans/request", { principal, months, annualRate });
       const monthlyPayment = res.data?.loan?.monthlyPayment;
 
-      showToast("ok", `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}`, 4500);
+      setMsg({ kind: "ok", text: `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}` });
+      pushNotif("ok", `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}`, 10000);
 
       await loadAll();
       clearLoanForm();
       setActive("history");
     } catch (e: unknown) {
-      showToast("err", extractErrorMessage(e), 4500);
+      const m = extractErrorMessage(e);
+      setMsg({ kind: "err", text: m });
+      pushNotif("err", m, 10000);
     } finally {
       setBusy(false);
     }
   }
+
+  // ✅ Polling למסגרת: אם יש שינוי → התראה
+  const checkOverdraft = useCallback(async () => {
+    try {
+      const res = await api.get("/overdraft/me");
+      const d = res.data as OverdraftMeResponse;
+
+      const status = d.request?.status ?? "none";
+      const limit = Number(d.overdraftLimit);
+
+      // בפעם הראשונה לא מציפים התראה (כדי לא "להרעיש" בכניסה)
+      if (firstOverdraftFetchRef.current) {
+        firstOverdraftFetchRef.current = false;
+        lastOverdraftRef.current = { status, limit };
+        return;
+      }
+
+      const prev = lastOverdraftRef.current;
+      lastOverdraftRef.current = { status, limit };
+
+      if (!prev) return;
+
+      // שינוי ל-Approved
+      if (prev.status !== "approved" && status === "approved") {
+        pushNotif("ok", `אושרה לך מסגרת עו״ש ✅ (${formatMoney(limit)})`, 12000);
+        return;
+      }
+
+      // שינוי ל-Rejected
+      if (prev.status !== "rejected" && status === "rejected") {
+        pushNotif("err", "בקשת מסגרת עו״ש נדחתה ⛔", 12000);
+        return;
+      }
+
+      // אם עדיין pending וביקשת מסגרת → אפשר להראות info פעם אחת
+      if (prev.status !== "pending" && status === "pending") {
+        pushNotif("info", "בקשת מסגרת עו״ש ממתינה לאישור…", 8000);
+        return;
+      }
+
+      // אם המסגרת גדלה גם בלי שינוי סטטוס (בטיחות)
+      if (Number.isFinite(prev.limit) && Number.isFinite(limit) && limit > prev.limit) {
+        pushNotif("ok", `המסגרת עודכנה ✅ (${formatMoney(prev.limit)} → ${formatMoney(limit)})`, 12000);
+      }
+    } catch {
+      // שקט: לא רוצים כל 10 שניות הודעת שגיאה אם יש רגע ניתוק
+    }
+  }, [pushNotif]);
+
+  useEffect(() => {
+    // בדיקה ראשונה מיד
+    checkOverdraft();
+
+    // ואז כל 10 שניות
+    const t = window.setInterval(checkOverdraft, 10_000);
+
+    // וגם כשחוזרים לטאב אחרי שהיית ברקע
+    const onVis = () => {
+      if (document.visibilityState === "visible") checkOverdraft();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [checkOverdraft]);
 
   return (
     <div className="bg">
@@ -312,256 +413,229 @@ export default function Dashboard() {
       <div className="orb orbB" />
       <div className="orb orbC" />
 
-      {/* ✅ Toast floating (שומר צבעים קיימים: toast ok / toast err) */}
-      {toast && (
-        <div
-          className={`toast ${toast.kind === "ok" ? "ok" : "err"}`}
-          style={{
-            position: "fixed",
-            top: 18,
-            right: 18,
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            maxWidth: 420,
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>{toast.text}</div>
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            style={{
-              border: "none",
-              background: "transparent",
-              color: "inherit",
-              fontWeight: 900,
-              cursor: "pointer",
-              opacity: 0.85,
-            }}
-            aria-label="Close"
-            title="Close"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      <div className="shell wide">
-        <div className="topbar">
-          <div className="brand">
-            <div className="logo">🏦</div>
-            <div>
-              <div className="brandTitle">Dashboard</div>
-              <div className="brandSub">Secure client portal</div>
+      <div
+        className="shell wide"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) 320px",
+          gap: 14,
+          alignItems: "start",
+        }}
+      >
+        <div>
+          <div className="topbar">
+            <div className="brand">
+              <div className="logo">🏦</div>
+              <div>
+                <div className="brandTitle">Dashboard</div>
+                <div className="brandSub">Secure client portal</div>
+              </div>
             </div>
-          </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
-            {isAdmin && (
-              <button className="btnGhost" onClick={goAdmin} type="button">
-                Admin
+            <div style={{ display: "flex", gap: 10 }}>
+              {isAdmin && (
+                <button className="btnGhost" onClick={goAdmin} type="button">
+                  Admin
+                </button>
+              )}
+
+              <button className="btnGhost" onClick={goSettings} type="button">
+                Settings
               </button>
-            )}
-
-            <button className="btnGhost" onClick={goSettings} type="button">
-              Settings
-            </button>
-            <button className="btnGhost" onClick={logout} type="button">
-              Logout
-            </button>
-          </div>
-        </div>
-
-        <div className="cardPro">
-          <h2 className="sectionTitle">Account</h2>
-
-          {loading ? (
-            <div className="skeletonBox">
-              <div className="skeletonLine" />
-              <div className="skeletonLine short" />
-              <div className="skeletonLine" />
+              <button className="btnGhost" onClick={logout} type="button">
+                Logout
+              </button>
             </div>
-          ) : !account ? (
-            <div className="alert">No account loaded.</div>
-          ) : (
-            <div className="accountPanel">
-              <div className="kv">
-                <div className="k">Owner</div>
-                <div className="v">{me?.name ?? "—"}</div>
+          </div>
+
+          <div className="cardPro">
+            <h2 className="sectionTitle">Account</h2>
+
+            {loading ? (
+              <div className="skeletonBox">
+                <div className="skeletonLine" />
+                <div className="skeletonLine short" />
+                <div className="skeletonLine" />
               </div>
+            ) : !account ? (
+              <div className="alert">No account loaded.</div>
+            ) : (
+              <div className="accountPanel">
+                <div className="kv">
+                  <div className="k">Owner</div>
+                  <div className="v">{me?.name ?? "—"}</div>
+                </div>
 
-              <div className="kv">
-                <div className="k">Account Number</div>
-                <div className="v mono">{account.accountNumber}</div>
-              </div>
+                <div className="kv">
+                  <div className="k">Account Number</div>
+                  <div className="v mono">{account.accountNumber}</div>
+                </div>
 
-              <div className="kv">
-                <div className="k">Balance</div>
-                <div className={`v big ${getBalanceClass(account.balance)}`}>{formatMoney(account.balance)}</div>
-              </div>
+                <div className="kv">
+                  <div className="k">Balance</div>
+                  <div className={`v big ${getBalanceClass(account.balance)}`}>{formatMoney(account.balance)}</div>
+                </div>
 
-              <div className="actionMenu">
-                <button className={`tabBtn ${active === "history" ? "active" : ""}`} onClick={() => setTab("history")} type="button">
-                  תנועות
-                </button>
-                <button className={`tabBtn ${active === "deposit" ? "active" : ""}`} onClick={() => setTab("deposit")} type="button">
-                  הפקדה
-                </button>
-                <button className={`tabBtn ${active === "withdraw" ? "active" : ""}`} onClick={() => setTab("withdraw")} type="button">
-                  משיכה
-                </button>
-                <button className={`tabBtn ${active === "transfer" ? "active" : ""}`} onClick={() => setTab("transfer")} type="button">
-                  העברה
-                </button>
-                <button className={`tabBtn ${active === "loan" ? "active" : ""}`} onClick={() => setTab("loan")} type="button">
-                  הלוואה
-                </button>
+                <div className="actionMenu">
+                  <button className={`tabBtn ${active === "history" ? "active" : ""}`} onClick={() => setTab("history")} type="button">
+                    תנועות
+                  </button>
+                  <button className={`tabBtn ${active === "deposit" ? "active" : ""}`} onClick={() => setTab("deposit")} type="button">
+                    הפקדה
+                  </button>
+                  <button className={`tabBtn ${active === "withdraw" ? "active" : ""}`} onClick={() => setTab("withdraw")} type="button">
+                    משיכה
+                  </button>
+                  <button className={`tabBtn ${active === "transfer" ? "active" : ""}`} onClick={() => setTab("transfer")} type="button">
+                    העברה
+                  </button>
+                  <button className={`tabBtn ${active === "loan" ? "active" : ""}`} onClick={() => setTab("loan")} type="button">
+                    הלוואה
+                  </button>
 
-                <button className="tabBtn" onClick={goOverdraft} type="button">
-                  מסגרת עו״ש
-                </button>
-              </div>
+                  <button className="tabBtn" onClick={goOverdraft} type="button">
+                    מסגרת עו״ש
+                  </button>
+                </div>
 
-              <div className="actionPanel">
-                {active === "history" && (
-                  <>
-                    <div className="actionRow">
-                      <button className="btnGhostSmall" onClick={refreshTx} type="button">
-                        רענון תנועות
-                      </button>
-                    </div>
+                <div className="actionPanel">
+                  {msg && <div className={`toast ${msg.kind === "ok" ? "ok" : "err"}`}>{msg.text}</div>}
 
-                    <div style={{ height: 10 }} />
+                  {active === "history" && (
+                    <>
+                      <div className="actionRow">
+                        <button className="btnGhostSmall" onClick={refreshTx} type="button">
+                          רענון תנועות
+                        </button>
+                      </div>
 
-                    {txItems.length ? (
-                      <div style={{ display: "grid", gap: 10 }}>
-                        {txItems.map((t) => {
-                          const signed = getSignedAmount(t, account?.id ?? null);
-                          const sign = signed >= 0 ? "+" : "−";
+                      <div style={{ height: 10 }} />
 
-                          return (
-                            <div
-                              key={t.id}
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                gap: 12,
-                                padding: 12,
-                                borderRadius: 12,
-                                border: "1px solid rgba(255,255,255,0.12)",
-                                background: "rgba(255,255,255,0.06)",
-                              }}
-                            >
-                              <div>
-                                <div style={{ fontWeight: 800 }}>{t.type.toUpperCase()}</div>
-                                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
-                                  {formatDate(t.createdAt)}
-                                  {t.description ? ` • ${t.description}` : ""}
+                      {txItems.length ? (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {txItems.map((t) => {
+                            const signed = getSignedAmount(t, account?.id ?? null);
+                            const sign = signed >= 0 ? "+" : "−";
+
+                            return (
+                              <div
+                                key={t.id}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  gap: 12,
+                                  padding: 12,
+                                  borderRadius: 12,
+                                  border: "1px solid rgba(255,255,255,0.12)",
+                                  background: "rgba(255,255,255,0.06)",
+                                }}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 800 }}>{t.type.toUpperCase()}</div>
+                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
+                                    {formatDate(t.createdAt)}
+                                    {t.description ? ` • ${t.description}` : ""}
+                                  </div>
+                                </div>
+
+                                <div style={{ fontWeight: 900, color: signed < 0 ? "#FF6B6B" : "#7CFF9B" }}>
+                                  {sign}
+                                  {formatMoney(Math.abs(signed))}
                                 </div>
                               </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="hint">אין תנועות עדיין.</div>
+                      )}
+                    </>
+                  )}
 
-                              {/* ✅ צבעים נשמרים כמו אצלך */}
-                              <div style={{ fontWeight: 900, color: signed < 0 ? "#FF6B6B" : "#7CFF9B" }}>
-                                {sign}
-                                {formatMoney(Math.abs(signed))}
-                              </div>
-                            </div>
-                          );
-                        })}
+                  {(active === "deposit" || active === "withdraw" || active === "transfer") && (
+                    <>
+                      {active === "transfer" && (
+                        <>
+                          <div className="label">מספר חשבון יעד</div>
+                          <input
+                            className="input"
+                            value={toAccountNumber}
+                            onChange={(e) => setToAccountNumber(e.target.value)}
+                            placeholder="לדוגמה: 57690672"
+                          />
+                        </>
+                      )}
+
+                      <div className="label">סכום</div>
+                      <input
+                        className="input"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        placeholder="לדוגמה: 100"
+                        inputMode="decimal"
+                      />
+
+                      <div className="label">תיאור (אופציונלי)</div>
+                      <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="למשל: ATM" />
+
+                      <div className="actionRow">
+                        <button className="btnPrimary" onClick={submitTx} disabled={busy} type="button">
+                          {busy ? "מבצע..." : "בצע"}
+                        </button>
+                        <button className="btnGhostSmall" onClick={clearForm} disabled={busy} type="button">
+                          ניקוי
+                        </button>
                       </div>
-                    ) : (
-                      <div className="hint">אין תנועות עדיין.</div>
-                    )}
-                  </>
-                )}
+                    </>
+                  )}
 
-                {(active === "deposit" || active === "withdraw" || active === "transfer") && (
-                  <>
-                    {active === "transfer" && (
-                      <>
-                        <div className="label">מספר חשבון יעד</div>
-                        <input
-                          className="input"
-                          value={toAccountNumber}
-                          onChange={(e) => setToAccountNumber(e.target.value)}
-                          placeholder="לדוגמה: 57690672"
-                        />
-                      </>
-                    )}
+                  {active === "loan" && (
+                    <>
+                      <div className="label">סכום הלוואה</div>
+                      <input
+                        className="input"
+                        value={loanPrincipal}
+                        onChange={(e) => setLoanPrincipal(e.target.value)}
+                        placeholder="למשל: 5000"
+                        inputMode="decimal"
+                      />
 
-                    <div className="label">סכום</div>
-                    <input
-                      className="input"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="לדוגמה: 100"
-                      inputMode="decimal"
-                    />
+                      <div className="label">חודשים</div>
+                      <input
+                        className="input"
+                        value={loanMonths}
+                        onChange={(e) => setLoanMonths(e.target.value)}
+                        placeholder="למשל: 12"
+                        inputMode="numeric"
+                      />
 
-                    <div className="label">תיאור (אופציונלי)</div>
-                    <input
-                      className="input"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="למשל: ATM"
-                    />
+                      <div className="label">ריבית שנתית (%)</div>
+                      <input
+                        className="input"
+                        value={loanAnnualRate}
+                        onChange={(e) => setLoanAnnualRate(e.target.value)}
+                        placeholder="למשל: 8"
+                        inputMode="decimal"
+                      />
 
-                    <div className="actionRow">
-                      <button className="btnPrimary" onClick={submitTx} disabled={busy} type="button">
-                        {busy ? "מבצע..." : "בצע"}
-                      </button>
-                      <button className="btnGhostSmall" onClick={clearForm} disabled={busy} type="button">
-                        ניקוי
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {active === "loan" && (
-                  <>
-                    <div className="label">סכום הלוואה</div>
-                    <input
-                      className="input"
-                      value={loanPrincipal}
-                      onChange={(e) => setLoanPrincipal(e.target.value)}
-                      placeholder="למשל: 5000"
-                      inputMode="decimal"
-                    />
-
-                    <div className="label">חודשים</div>
-                    <input
-                      className="input"
-                      value={loanMonths}
-                      onChange={(e) => setLoanMonths(e.target.value)}
-                      placeholder="למשל: 12"
-                      inputMode="numeric"
-                    />
-
-                    <div className="label">ריבית שנתית (%)</div>
-                    <input
-                      className="input"
-                      value={loanAnnualRate}
-                      onChange={(e) => setLoanAnnualRate(e.target.value)}
-                      placeholder="למשל: 8"
-                      inputMode="decimal"
-                    />
-
-                    <div className="actionRow">
-                      <button className="btnPrimary" onClick={submitLoan} disabled={busy} type="button">
-                        {busy ? "מבצע..." : "בקש הלוואה"}
-                      </button>
-                      <button className="btnGhostSmall" onClick={clearLoanForm} disabled={busy} type="button">
-                        ניקוי
-                      </button>
-                    </div>
-                  </>
-                )}
+                      <div className="actionRow">
+                        <button className="btnPrimary" onClick={submitLoan} disabled={busy} type="button">
+                          {busy ? "מבצע..." : "בקש הלוואה"}
+                        </button>
+                        <button className="btnGhostSmall" onClick={clearLoanForm} disabled={busy} type="button">
+                          ניקוי
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+
+        <NotificationsPanel items={notifs} onDismiss={dismissNotif} />
       </div>
     </div>
   );

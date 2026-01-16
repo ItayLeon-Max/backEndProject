@@ -1,5 +1,7 @@
 {
-    "io": {
-        "port": 3003
-    }
+  "io": {
+    "port": 3001,
+    "clientOrigin": "http://localhost:5173"
+  },
+  "jwtSecret": "MyJwtSecret"
 }
