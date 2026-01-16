@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { api } from "../api";
@@ -106,6 +106,12 @@ function getSignedAmount(tx: Tx, myAccountId: string | null): number {
   return base;
 }
 
+function getBalanceClass(balance: string | number) {
+  const n = Number(balance);
+  if (!Number.isFinite(n)) return "";
+  return n < 0 ? "balance-bad" : "balance-ok";
+}
+
 export default function Dashboard() {
   const nav = useNavigate();
 
@@ -123,16 +129,34 @@ export default function Dashboard() {
 
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  // ✅ Toast state
+  const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
 
   const token = localStorage.getItem("jwt") ?? "";
   const me = useMemo(() => (token ? decodeJwtPayload(token) : null), [token]);
 
-  // ✅ הרשאת admin גם אם מגיע "Admin" וגם אם מגיע "admin"
   const isAdmin = useMemo(() => {
     const r = (me?.role ?? "").toLowerCase();
     return r === "admin";
   }, [me?.role]);
+
+  function showToast(kind: "ok" | "err", text: string, ms = 3500) {
+    setToast({ kind, text });
+
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, ms);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   async function loadAll() {
     setLoading(true);
@@ -166,9 +190,12 @@ export default function Dashboard() {
     nav("/settings");
   }
 
-  // ✅ מעבר למסך מנהל
   function goAdmin() {
     nav("/admin");
+  }
+
+  function goOverdraft() {
+    nav("/overdraft");
   }
 
   function clearForm() {
@@ -185,8 +212,7 @@ export default function Dashboard() {
 
   function setTab(tab: Action) {
     setActive(tab);
-    setMsg(null);
-
+    // לא מוחקים Toast פה כדי שלא "ייעלם" למשתמש
     if (tab === "loan") clearForm();
     if (tab !== "loan") clearLoanForm();
     if (tab !== "history" && tab !== "loan") clearForm();
@@ -196,8 +222,10 @@ export default function Dashboard() {
     try {
       const txRes = await api.get("/transactions/me", { params: { page: 1, limit: 8 } });
       setTxItems(txRes.data?.items ?? []);
+      showToast("ok", "התנועות עודכנו ✅", 1800);
     } catch {
       setTxItems([]);
+      showToast("err", "לא הצלחתי לרענן תנועות", 2500);
     }
   }
 
@@ -205,39 +233,38 @@ export default function Dashboard() {
     const n = Number(amount);
 
     if (!Number.isFinite(n) || n <= 0) {
-      setMsg({ kind: "err", text: "סכום חייב להיות מספר חיובי" });
+      showToast("err", "סכום חייב להיות מספר חיובי");
       return;
     }
 
     if (active === "transfer" && !toAccountNumber.trim()) {
-      setMsg({ kind: "err", text: "חסר מספר חשבון יעד" });
+      showToast("err", "חסר מספר חשבון יעד");
       return;
     }
 
     setBusy(true);
-    setMsg(null);
 
     try {
       if (active === "deposit") {
         await api.post("/transactions/deposit", { amount: n, description: description || undefined });
-        setMsg({ kind: "ok", text: "הפקדה בוצעה ✅" });
+        showToast("ok", "הפקדה בוצעה ✅");
       } else if (active === "withdraw") {
         await api.post("/transactions/withdraw", { amount: n, description: description || undefined });
-        setMsg({ kind: "ok", text: "משיכה בוצעה ✅" });
+        showToast("ok", "משיכה בוצעה ✅");
       } else if (active === "transfer") {
         await api.post("/transactions/transfer", {
           toAccountNumber: toAccountNumber.trim(),
           amount: n,
           description: description || undefined,
         });
-        setMsg({ kind: "ok", text: "העברה בוצעה ✅" });
+        showToast("ok", "העברה בוצעה ✅");
       }
 
       await loadAll();
       clearForm();
       setActive("history");
     } catch (e: unknown) {
-      setMsg({ kind: "err", text: extractErrorMessage(e) });
+      showToast("err", extractErrorMessage(e), 4500);
     } finally {
       setBusy(false);
     }
@@ -249,32 +276,31 @@ export default function Dashboard() {
     const annualRate = Number(loanAnnualRate);
 
     if (!Number.isFinite(principal) || principal <= 0) {
-      setMsg({ kind: "err", text: "סכום הלוואה חייב להיות חיובי" });
+      showToast("err", "סכום הלוואה חייב להיות חיובי");
       return;
     }
     if (!Number.isFinite(months) || months < 1 || months > 120) {
-      setMsg({ kind: "err", text: "חודשים חייב להיות 1–120" });
+      showToast("err", "חודשים חייב להיות 1–120");
       return;
     }
     if (!Number.isFinite(annualRate) || annualRate < 0 || annualRate > 50) {
-      setMsg({ kind: "err", text: "ריבית שנתית חייבת להיות 0–50" });
+      showToast("err", "ריבית שנתית חייבת להיות 0–50");
       return;
     }
 
     setBusy(true);
-    setMsg(null);
 
     try {
       const res = await api.post("/loans/request", { principal, months, annualRate });
       const monthlyPayment = res.data?.loan?.monthlyPayment;
 
-      setMsg({ kind: "ok", text: `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}` });
+      showToast("ok", `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}`, 4500);
 
       await loadAll();
       clearLoanForm();
       setActive("history");
     } catch (e: unknown) {
-      setMsg({ kind: "err", text: extractErrorMessage(e) });
+      showToast("err", extractErrorMessage(e), 4500);
     } finally {
       setBusy(false);
     }
@@ -285,6 +311,41 @@ export default function Dashboard() {
       <div className="orb orbA" />
       <div className="orb orbB" />
       <div className="orb orbC" />
+
+      {/* ✅ Toast floating (שומר צבעים קיימים: toast ok / toast err) */}
+      {toast && (
+        <div
+          className={`toast ${toast.kind === "ok" ? "ok" : "err"}`}
+          style={{
+            position: "fixed",
+            top: 18,
+            right: 18,
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            maxWidth: 420,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>{toast.text}</div>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "inherit",
+              fontWeight: 900,
+              cursor: "pointer",
+              opacity: 0.85,
+            }}
+            aria-label="Close"
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="shell wide">
         <div className="topbar">
@@ -297,7 +358,6 @@ export default function Dashboard() {
           </div>
 
           <div style={{ display: "flex", gap: 10 }}>
-            {/* ✅ רק admin רואה */}
             {isAdmin && (
               <button className="btnGhost" onClick={goAdmin} type="button">
                 Admin
@@ -338,7 +398,7 @@ export default function Dashboard() {
 
               <div className="kv">
                 <div className="k">Balance</div>
-                <div className="v big">{formatMoney(account.balance)}</div>
+                <div className={`v big ${getBalanceClass(account.balance)}`}>{formatMoney(account.balance)}</div>
               </div>
 
               <div className="actionMenu">
@@ -357,11 +417,13 @@ export default function Dashboard() {
                 <button className={`tabBtn ${active === "loan" ? "active" : ""}`} onClick={() => setTab("loan")} type="button">
                   הלוואה
                 </button>
+
+                <button className="tabBtn" onClick={goOverdraft} type="button">
+                  מסגרת עו״ש
+                </button>
               </div>
 
               <div className="actionPanel">
-                {msg && <div className={`toast ${msg.kind === "ok" ? "ok" : "err"}`}>{msg.text}</div>}
-
                 {active === "history" && (
                   <>
                     <div className="actionRow">
@@ -400,7 +462,8 @@ export default function Dashboard() {
                                 </div>
                               </div>
 
-                              <div style={{ fontWeight: 900 }}>
+                              {/* ✅ צבעים נשמרים כמו אצלך */}
+                              <div style={{ fontWeight: 900, color: signed < 0 ? "#FF6B6B" : "#7CFF9B" }}>
                                 {sign}
                                 {formatMoney(Math.abs(signed))}
                               </div>
