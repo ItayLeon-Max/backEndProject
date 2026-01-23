@@ -11,6 +11,7 @@ import transfersRouter from "./routers/transfers/transfers";
 import warehousesRouter from "../src/routers/warehouses/warehouses"
 import ledgerRouter from "../src/routers/ledger/ledger"
 import ordersRouter from "../src/routers/orders/orders"
+import itemsRouter from "../src/routers/items/items"
 
 
 const port = config.get<string>('app.port')
@@ -34,6 +35,8 @@ export async function start() {
     app.use("/warehouses", warehousesRouter);
     app.use("/ledger", ledgerRouter);
     app.use("/orders", ordersRouter);
+    app.use("/items", itemsRouter);
+
     
 
     // special notFound middleware
