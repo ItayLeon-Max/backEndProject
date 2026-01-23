@@ -414,3 +414,21 @@ body {
 .balance-bad {
   color: #FF6B6B;
 }
+
+.chartBox {
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.chartTitle {
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.chartEmpty {
+  padding: 20px;
+  opacity: 0.7;
+  text-align: center;
+}

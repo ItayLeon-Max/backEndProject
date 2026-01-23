@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { api } from "../api";
-import NotificationsPanel, { type NotificationItem, type NotificationKind } from "../ components/NotificationsPanel";
+
+import NotificationsPanel, { pushNotification } from "../components/NotificationsPanel";
+import AccountTxChart from "../components/AccountTxChart";
 
 type Account = {
   id: string;
@@ -34,19 +36,19 @@ type JwtPayload = {
   role?: string;
 };
 
-// ✅ תוצאה מהשרת למסגרת
+// --- Overdraft status check (להתראות על אישור/דחייה) ---
 type OverdraftStatus = "none" | "pending" | "approved" | "rejected";
+
 type OverdraftMeResponse = {
-  accountId: string;
-  balance: number;
-  overdraftLimit: number;
-  remainingBeforeLimit: number;
   request: {
     status: OverdraftStatus;
     requestedLimit: number | null;
     note: string | null;
   };
+  overdraftLimit?: number;
 };
+
+const OD_STATUS_KEY = "bank_overdraft_status_v1";
 
 function formatMoney(v: string | number) {
   const n = Number(v);
@@ -127,10 +129,6 @@ function getBalanceClass(balance: string | number) {
   return n < 0 ? "balance-bad" : "balance-ok";
 }
 
-function id() {
-  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 export default function Dashboard() {
   const nav = useNavigate();
 
@@ -148,12 +146,7 @@ export default function Dashboard() {
 
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  // ✅ toast הקיים שלך (משאירים)
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-
-  // ✅ פאנל התראות קבוע
-  const [notifs, setNotifs] = useState<NotificationItem[]>([]);
 
   const token = localStorage.getItem("jwt") ?? "";
   const me = useMemo(() => (token ? decodeJwtPayload(token) : null), [token]);
@@ -163,29 +156,55 @@ export default function Dashboard() {
     return r === "admin";
   }, [me?.role]);
 
-  const pushNotif = useCallback((kind: NotificationKind, text: string, ttlMs = 8000) => {
-    const item: NotificationItem = { id: id(), kind, text, createdAt: Date.now(), ttlMs };
-    setNotifs((prev) => [item, ...prev].slice(0, 6));
-  }, []);
+  async function checkOverdraftStatusForNotifications() {
+    try {
+      const res = await api.get("/overdraft/me");
+      const data = res.data as OverdraftMeResponse;
+      const status = data?.request?.status ?? "none";
 
-  const dismissNotif = useCallback((notifId: string) => {
-    setNotifs((prev) => prev.filter((n) => n.id !== notifId));
-  }, []);
+      const last = (localStorage.getItem(OD_STATUS_KEY) ?? "none") as OverdraftStatus;
+      if (status !== last) {
+        // שינוי סטטוס -> התראה
+        if (status === "approved") {
+          pushNotification({
+            kind: "ok",
+            title: "✅ מסגרת אושרה",
+            text: `הבקשה להגדלת מסגרת אושרה. מסגרת חדשה: ${formatMoney(Number(data.overdraftLimit ?? 0))}`,
+          });
+        } else if (status === "rejected") {
+          pushNotification({
+            kind: "err",
+            title: "❌ מסגרת נדחתה",
+            text: "הבקשה להגדלת מסגרת נדחתה.",
+          });
+        } else if (status === "pending") {
+          pushNotification({
+            kind: "info",
+            title: "⏳ בקשת מסגרת בהמתנה",
+            text: "הבקשה נשלחה וממתינה לאישור מנהל.",
+          });
+        }
+      }
 
-  // ✅ כדי לזהות שינויי מסגרת
-  const lastOverdraftRef = useRef<{ status: OverdraftStatus; limit: number } | null>(null);
-  const firstOverdraftFetchRef = useRef(true);
+      localStorage.setItem(OD_STATUS_KEY, status);
+    } catch {
+      // לא חובה להפיל את הדשבורד בגלל זה
+    }
+  }
 
   async function loadAll() {
     setLoading(true);
     try {
       const [accRes, txRes] = await Promise.all([
         api.get("/accounts/me"),
-        api.get("/transactions/me", { params: { page: 1, limit: 8 } }),
+        api.get("/transactions/me", { params: { page: 1, limit: 30 } }), // ✅ מומלץ יותר מ-8 לגרף
       ]);
 
       setAccount(accRes.data);
       setTxItems(txRes.data?.items ?? []);
+
+      // ✅ אחרי שיש נתונים, נבדוק סטטוס מסגרת בשביל התראה
+      await checkOverdraftStatusForNotifications();
     } catch {
       localStorage.removeItem("jwt");
       nav("/");
@@ -239,12 +258,11 @@ export default function Dashboard() {
 
   async function refreshTx() {
     try {
-      const txRes = await api.get("/transactions/me", { params: { page: 1, limit: 8 } });
+      const txRes = await api.get("/transactions/me", { params: { page: 1, limit: 30 } });
       setTxItems(txRes.data?.items ?? []);
-      pushNotif("info", "התנועות עודכנו");
+      await checkOverdraftStatusForNotifications();
     } catch {
       setTxItems([]);
-      pushNotif("err", "נכשל רענון תנועות");
     }
   }
 
@@ -253,13 +271,11 @@ export default function Dashboard() {
 
     if (!Number.isFinite(n) || n <= 0) {
       setMsg({ kind: "err", text: "סכום חייב להיות מספר חיובי" });
-      pushNotif("warn", "סכום חייב להיות מספר חיובי");
       return;
     }
 
     if (active === "transfer" && !toAccountNumber.trim()) {
       setMsg({ kind: "err", text: "חסר מספר חשבון יעד" });
-      pushNotif("warn", "חסר מספר חשבון יעד להעברה");
       return;
     }
 
@@ -270,11 +286,11 @@ export default function Dashboard() {
       if (active === "deposit") {
         await api.post("/transactions/deposit", { amount: n, description: description || undefined });
         setMsg({ kind: "ok", text: "הפקדה בוצעה ✅" });
-        pushNotif("ok", "הפקדה בוצעה ✅");
+        pushNotification({ kind: "ok", title: "הפקדה", text: `${formatMoney(n)} הופקדו לחשבון` });
       } else if (active === "withdraw") {
         await api.post("/transactions/withdraw", { amount: n, description: description || undefined });
         setMsg({ kind: "ok", text: "משיכה בוצעה ✅" });
-        pushNotif("ok", "משיכה בוצעה ✅");
+        pushNotification({ kind: "info", title: "משיכה", text: `${formatMoney(n)} נמשכו מהחשבון` });
       } else if (active === "transfer") {
         await api.post("/transactions/transfer", {
           toAccountNumber: toAccountNumber.trim(),
@@ -282,16 +298,15 @@ export default function Dashboard() {
           description: description || undefined,
         });
         setMsg({ kind: "ok", text: "העברה בוצעה ✅" });
-        pushNotif("ok", "העברה בוצעה ✅");
+        pushNotification({ kind: "info", title: "העברה", text: `${formatMoney(n)} הועברו לחשבון ${toAccountNumber.trim()}` });
       }
 
       await loadAll();
       clearForm();
       setActive("history");
     } catch (e: unknown) {
-      const m = extractErrorMessage(e);
-      setMsg({ kind: "err", text: m });
-      pushNotif("err", m, 10000);
+      setMsg({ kind: "err", text: extractErrorMessage(e) });
+      pushNotification({ kind: "err", title: "שגיאה", text: extractErrorMessage(e) });
     } finally {
       setBusy(false);
     }
@@ -304,17 +319,14 @@ export default function Dashboard() {
 
     if (!Number.isFinite(principal) || principal <= 0) {
       setMsg({ kind: "err", text: "סכום הלוואה חייב להיות חיובי" });
-      pushNotif("warn", "סכום הלוואה חייב להיות חיובי");
       return;
     }
     if (!Number.isFinite(months) || months < 1 || months > 120) {
       setMsg({ kind: "err", text: "חודשים חייב להיות 1–120" });
-      pushNotif("warn", "חודשים חייב להיות 1–120");
       return;
     }
     if (!Number.isFinite(annualRate) || annualRate < 0 || annualRate > 50) {
       setMsg({ kind: "err", text: "ריבית שנתית חייבת להיות 0–50" });
-      pushNotif("warn", "ריבית שנתית חייבת להיות 0–50");
       return;
     }
 
@@ -326,86 +338,31 @@ export default function Dashboard() {
       const monthlyPayment = res.data?.loan?.monthlyPayment;
 
       setMsg({ kind: "ok", text: `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}` });
-      pushNotif("ok", `הלוואה אושרה ✅ החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}`, 10000);
+      pushNotification({
+        kind: "ok",
+        title: "הלוואה אושרה",
+        text: `סכום: ${formatMoney(principal)} • החזר חודשי: ${formatMoney(monthlyPayment ?? 0)}`,
+      });
 
       await loadAll();
       clearLoanForm();
       setActive("history");
     } catch (e: unknown) {
-      const m = extractErrorMessage(e);
-      setMsg({ kind: "err", text: m });
-      pushNotif("err", m, 10000);
+      setMsg({ kind: "err", text: extractErrorMessage(e) });
+      pushNotification({ kind: "err", title: "שגיאה", text: extractErrorMessage(e) });
     } finally {
       setBusy(false);
     }
   }
 
-  // ✅ Polling למסגרת: אם יש שינוי → התראה
-  const checkOverdraft = useCallback(async () => {
-    try {
-      const res = await api.get("/overdraft/me");
-      const d = res.data as OverdraftMeResponse;
-
-      const status = d.request?.status ?? "none";
-      const limit = Number(d.overdraftLimit);
-
-      // בפעם הראשונה לא מציפים התראה (כדי לא "להרעיש" בכניסה)
-      if (firstOverdraftFetchRef.current) {
-        firstOverdraftFetchRef.current = false;
-        lastOverdraftRef.current = { status, limit };
-        return;
-      }
-
-      const prev = lastOverdraftRef.current;
-      lastOverdraftRef.current = { status, limit };
-
-      if (!prev) return;
-
-      // שינוי ל-Approved
-      if (prev.status !== "approved" && status === "approved") {
-        pushNotif("ok", `אושרה לך מסגרת עו״ש ✅ (${formatMoney(limit)})`, 12000);
-        return;
-      }
-
-      // שינוי ל-Rejected
-      if (prev.status !== "rejected" && status === "rejected") {
-        pushNotif("err", "בקשת מסגרת עו״ש נדחתה ⛔", 12000);
-        return;
-      }
-
-      // אם עדיין pending וביקשת מסגרת → אפשר להראות info פעם אחת
-      if (prev.status !== "pending" && status === "pending") {
-        pushNotif("info", "בקשת מסגרת עו״ש ממתינה לאישור…", 8000);
-        return;
-      }
-
-      // אם המסגרת גדלה גם בלי שינוי סטטוס (בטיחות)
-      if (Number.isFinite(prev.limit) && Number.isFinite(limit) && limit > prev.limit) {
-        pushNotif("ok", `המסגרת עודכנה ✅ (${formatMoney(prev.limit)} → ${formatMoney(limit)})`, 12000);
-      }
-    } catch {
-      // שקט: לא רוצים כל 10 שניות הודעת שגיאה אם יש רגע ניתוק
-    }
-  }, [pushNotif]);
-
-  useEffect(() => {
-    // בדיקה ראשונה מיד
-    checkOverdraft();
-
-    // ואז כל 10 שניות
-    const t = window.setInterval(checkOverdraft, 10_000);
-
-    // וגם כשחוזרים לטאב אחרי שהיית ברקע
-    const onVis = () => {
-      if (document.visibilityState === "visible") checkOverdraft();
-    };
-    document.addEventListener("visibilitychange", onVis);
-
-    return () => {
-      window.clearInterval(t);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [checkOverdraft]);
+  const chartItems = useMemo(() => {
+    const myId = account?.id ?? null;
+    return txItems.map((t) => ({
+      id: t.id,
+      createdAt: t.createdAt,
+      signedAmount: getSignedAmount(t, myId),
+    }));
+  }, [txItems, account?.id]);
 
   return (
     <div className="bg">
@@ -413,41 +370,41 @@ export default function Dashboard() {
       <div className="orb orbB" />
       <div className="orb orbC" />
 
-      <div
-        className="shell wide"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 320px",
-          gap: 14,
-          alignItems: "start",
-        }}
-      >
-        <div>
-          <div className="topbar">
-            <div className="brand">
-              <div className="logo">🏦</div>
-              <div>
-                <div className="brandTitle">Dashboard</div>
-                <div className="brandSub">Secure client portal</div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10 }}>
-              {isAdmin && (
-                <button className="btnGhost" onClick={goAdmin} type="button">
-                  Admin
-                </button>
-              )}
-
-              <button className="btnGhost" onClick={goSettings} type="button">
-                Settings
-              </button>
-              <button className="btnGhost" onClick={logout} type="button">
-                Logout
-              </button>
+      <div className="shell wide">
+        <div className="topbar">
+          <div className="brand">
+            <div className="logo">🏦</div>
+            <div>
+              <div className="brandTitle">Dashboard</div>
+              <div className="brandSub">Secure client portal</div>
             </div>
           </div>
 
+          <div style={{ display: "flex", gap: 10 }}>
+            {isAdmin && (
+              <button className="btnGhost" onClick={goAdmin} type="button">
+                Admin
+              </button>
+            )}
+
+            <button className="btnGhost" onClick={goSettings} type="button">
+              Settings
+            </button>
+            <button className="btnGhost" onClick={logout} type="button">
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1.7fr 1fr",
+            gap: 14,
+            alignItems: "start",
+          }}
+        >
+          {/* LEFT: main */}
           <div className="cardPro">
             <h2 className="sectionTitle">Account</h2>
 
@@ -577,7 +534,12 @@ export default function Dashboard() {
                       />
 
                       <div className="label">תיאור (אופציונלי)</div>
-                      <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="למשל: ATM" />
+                      <input
+                        className="input"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="למשל: ATM"
+                      />
 
                       <div className="actionRow">
                         <button className="btnPrimary" onClick={submitTx} disabled={busy} type="button">
@@ -633,9 +595,17 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-        </div>
 
-        <NotificationsPanel items={notifs} onDismiss={dismissNotif} />
+          {/* RIGHT: notifications + chart */}
+          <div style={{ display: "grid", gap: 14 }}>
+            <NotificationsPanel />
+
+            <AccountTxChart
+              currentBalance={Number(account?.balance ?? 0)}
+              items={chartItems}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -19,9 +19,7 @@
     "typescript": "^5.8.2"
   },
   "dependencies": {
-    "@types/jsonwebtoken": "^9.0.10",
     "config": "^3.3.12",
-    "jsonwebtoken": "^9.0.3",
     "socket.io": "^4.8.1"
   }
 }
