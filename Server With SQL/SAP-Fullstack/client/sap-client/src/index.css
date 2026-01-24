@@ -101,3 +101,85 @@ tbody tr {
 .muted {
   color: #94a3b8;
 }
+
+/* ===== Buttons (global) ===== */
+button {
+  color: #f1f5f9;            /* טקסט בהיר */
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* אם יש לך כפתורים שנראים "שקופים" מדי */
+button {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* hover יותר ברור */
+button:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.26);
+}
+
+/* Action buttons */
+.btn {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #f8fafc;
+  font-weight: 900;
+}
+
+.btn-primary {
+  background: rgba(90, 170, 255, 0.18);
+  border-color: rgba(90, 170, 255, 0.35);
+}
+.btn-success {
+  background: rgba(124, 255, 155, 0.16);
+  border-color: rgba(124, 255, 155, 0.30);
+}
+.btn-danger {
+  background: rgba(255, 107, 107, 0.16);
+  border-color: rgba(255, 107, 107, 0.32);
+}
+
+.btn:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+.card{
+  padding:14px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.06);
+}
+
+.input{
+  width:100%;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(0,0,0,0.18);
+  color:inherit;
+  outline:none;
+}
+
+.btn{
+  padding:10px 14px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(255,255,255,0.06);
+  color:inherit;
+  cursor:pointer;
+  font-weight:900;
+}
+
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.btn-primary{background:rgba(90,170,255,0.16);border-color:rgba(90,170,255,0.30)}
+.btn-danger{background:rgba(255,107,107,0.16);border-color:rgba(255,107,107,0.30)}

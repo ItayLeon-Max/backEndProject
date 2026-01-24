@@ -3,8 +3,10 @@ import Login from "./pages/Login";
 import Stock from "./pages/Stock";
 import Orders from "./pages/Orders";
 import Transfers from "./pages/Transfers";
+import Warehouses from "./pages/Warehouses"; // ✅ חדש
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
+import Items from "./pages/Itemes";
 
 export default function App() {
   return (
@@ -43,6 +45,28 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      <Route
+        path="/warehouses"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Warehouses />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+          <Route
+      path="/items"
+      element={
+        <ProtectedRoute>
+          <Layout>
+            <Items />
+          </Layout>
+        </ProtectedRoute>
+      }
+    />
 
       <Route path="/" element={<Navigate to="/stock" replace />} />
       <Route path="*" element={<Navigate to="/stock" replace />} />

@@ -18,6 +18,8 @@ export default function Sidebar() {
         <NavLink to="/stock" style={linkStyle}>מלאי</NavLink>
         <NavLink to="/orders" style={linkStyle}>הזמנות</NavLink>
         <NavLink to="/transfers" style={linkStyle}>העברות</NavLink>
+        <NavLink to="/warehouses" style={linkStyle}>מחסנים</NavLink>
+        <NavLink to="/items" style={linkStyle}>מוצרים</NavLink>
       </nav>
     </div>
   );
